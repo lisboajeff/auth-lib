@@ -12,20 +12,6 @@ jobs:
     name: Java 21 - Build and Test
     runs-on: ubuntu-latest
 
-    services:
-      localstack:
-        image: localstack/localstack:latest
-        ports:
-          - 4566:4566
-        env:
-          SERVICES: s3
-          AWS_DEFAULT_REGION: us-east-1
-        options: >-
-          --health-cmd "curl -s http://localhost:4566/_localstack/health | grep '\"s3\": \"available\"' || exit 0"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -42,6 +28,12 @@ jobs:
 
       - name: Install auth-lib to Local Maven Repo
         run: mvn install -DskipTests
+
+      - name: Start LocalStack S3 for Integration Tests
+        run: |
+          docker run -d --name localstack -p 4566:4566 -e SERVICES=s3 localstack/localstack:latest
+          # Wait up to 30s for LocalStack to become healthy
+          timeout 30s bash -c 'until curl -s http://localhost:4566/_localstack/health | grep -q "\"s3\""; do sleep 2; done' || true
 
       - name: Run s3-demo Integration & Concurrency Tests
         run: mvn clean test -f s3-demo/pom.xml
