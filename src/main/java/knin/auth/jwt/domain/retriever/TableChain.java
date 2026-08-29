@@ -1,7 +1,8 @@
 package knin.auth.jwt.domain.retriever;
 
+import knin.auth.jwt.domain.result.Result;
+
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -18,26 +19,23 @@ public abstract class TableChain<E> implements Chain<E> {
     private final TableChain<? super E> next;
 
     @Override
-    public final CompletableFuture<Optional<JsonWebKeys>> get(final E e) {
+    public final CompletableFuture<Result<JsonWebKeys>> get(final E e) {
         return fetch(e)
-                .thenCompose(optional -> {
-                    if (optional.isPresent()) {
-                        return CompletableFuture.completedFuture(optional);
+                .thenCompose(result -> {
+                    if (result.hasResult()) {
+                        return CompletableFuture.completedFuture(result);
                     }
                     return nextHandle(e);
                 });
     }
 
-    private CompletionStage<Optional<JsonWebKeys>> nextHandle(final E e) {
+    private CompletionStage<Result<JsonWebKeys>> nextHandle(final E e) {
         if (next == null)
-            return CompletableFuture.completedFuture(Optional.empty());
-        return next.get(e).thenApply(optional -> {
-            optional.ifPresent(this::set);
-            return optional;
-        });
+            return CompletableFuture.completedFuture(Result.empty());
+        return next.get(e).thenApply(result -> result.Ok(this::set));
     }
 
-    protected abstract CompletableFuture<Optional<JsonWebKeys>> fetch(final E e);
+    protected abstract CompletableFuture<Result<JsonWebKeys>> fetch(final E e);
 
     protected abstract void set(final JsonWebKeys responseData);
 

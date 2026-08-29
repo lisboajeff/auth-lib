@@ -42,11 +42,8 @@ public class AuthConfiguration {
 
     @Produces
     @Singleton
-    public S3AsyncSource produceS3AsyncSource(
-            final S3AsyncClient s3AsyncClient,
-            @ConfigProperty(name = "auth.s3.bucket", defaultValue = "auth-bucket") final String bucket,
-            @ConfigProperty(name = "auth.s3.key", defaultValue = "jwks.json") final String key) {
-        return new S3AsyncSource(s3AsyncClient, bucket, key);
+    public S3AsyncSource produceS3AsyncSource(final S3BucketReader s3BucketReader) {
+        return new S3AsyncSource(s3BucketReader);
     }
 
     @Produces
@@ -62,9 +59,11 @@ public class AuthConfiguration {
         return new JwtSigner(pemPath);
     }
 
+    private static final org.jboss.logging.Logger LOG = org.jboss.logging.Logger.getLogger(AuthConfiguration.class);
+
     @Produces
     @Singleton
-    public TableChain<String> produceTableChain(
+    public Introspect produceIntrospect(
             final AuthFactory authFactory,
             final MemoryPolling memoryPolling,
             final S3AsyncSource s3AsyncSource) {
@@ -74,22 +73,13 @@ public class AuthConfiguration {
         // Level 3: S3 Async Fallback
         final TableChain<String> s3FallbackChain = authFactory.createSource(tokenHandle, s3AsyncSource);
 
-        // Level 2: MemoryPolling Cache (refreshed via S3 HeadObject polling)
-        final TableChain<String> memoryPollingChain = authFactory.createSource(tokenHandle, memoryPolling, s3FallbackChain);
+        // Level 2: MemoryPolling Cache apontando para o Level 3 (s3FallbackChain) como 'next'
+        final TableChain<String> memoryPollingChain = authFactory.createSource(tokenHandle, memoryPolling,
+                s3FallbackChain);
 
-        // Level 1: Ponta da cadeia (Head of Chain: InMemory L1 Cache)
-        return new InMemory(memoryPollingChain);
-    }
+        // Level 1: AuthFactory encapsula o memoryPollingChain com o InMemory L1 e acopla o logger da aplicação
+        return authFactory.createIntrospect(tokenHandle, memoryPollingChain, LOG::info);
 
-    @Produces
-    @Singleton
-    public Introspect produceIntrospect(
-            final AuthFactory authFactory,
-            final TableChain<String> tableChain) {
-
-        final TokenHandle tokenHandle = authFactory.createTokenHandle();
-        final Keys keys = (Keys) tableChain;
-        return new Introspect(tokenHandle, keys);
     }
 
 }

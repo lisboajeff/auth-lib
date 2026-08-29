@@ -1,5 +1,7 @@
 package knin.auth.jwt.domain.retriever;
 
+import knin.auth.jwt.domain.result.Result;
+
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -13,7 +15,7 @@ public class TableChainSkeleton extends TableChain<String> {
     }
 
     @Override
-    protected CompletableFuture<Optional<JsonWebKeys>> fetch(final String s) {
+    protected CompletableFuture<Result<JsonWebKeys>> fetch(final String s) {
         throw new IllegalCallerException();
     }
 

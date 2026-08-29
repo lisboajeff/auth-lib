@@ -5,52 +5,52 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-final class FailedResult<Data> implements Result<Data> {
+final class SuccessResult<Data> implements Result<Data> {
 
-    FailedResult(final ResultException exception) {
-        this.exception = exception;
+    SuccessResult(final Data data) {
+        this.data = data;
     }
 
-    private final ResultException exception;
+    private final Data data;
 
     @Override
     public <Other> Result<Other> flatMap(final Function<? super Data, ? extends Result<Other>> function) {
-        return new FailedResult<>(exception);
+        return function.apply(data);
     }
 
     @Override
     public <Other> Result<Other> flatMapOrElse(final Function<? super Data, ? extends Result<Other>> function, final Supplier<? extends Result<Other>> alternative) {
-        return flatMap(function);
+        return function.apply(data);
     }
 
     @Override
     public <Other> CompletableFuture<Result<Other>> mapFuture(final Function<? super Data, ? extends CompletableFuture<Result<Other>>> function) {
-        return CompletableFuture.completedFuture(Result.failed(exception));
+        return function.apply(data);
     }
 
     @Override
     public Result<Data> Ok(final Consumer<? super Data> consumer) {
+        consumer.accept(data);
         return this;
     }
 
     @Override
     public Data get() {
-        return null;
+        return data;
     }
 
     @Override
     public boolean isError() {
-        return true;
-    }
-
-    @Override
-    public boolean hasResult() {
         return false;
     }
 
     @Override
+    public boolean hasResult() {
+        return true;
+    }
+
+    @Override
     public Result<Data> Error(final Consumer<? super ResultException> consumer) {
-        consumer.accept(exception);
         return this;
     }
 

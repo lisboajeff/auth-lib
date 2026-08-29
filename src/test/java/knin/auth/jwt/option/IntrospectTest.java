@@ -1,15 +1,12 @@
 package knin.auth.jwt.option;
 
 import java.util.Date;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 import com.nimbusds.jose.jwk.RSAKey;
 import knin.auth.jwt.adapter.TokenTestHelper;
 import knin.auth.jwt.adapter.retriever.Source;
+import knin.auth.jwt.domain.result.Result;
 import knin.auth.jwt.domain.validate.Token;
-import knin.auth.jwt.domain.validate.TokenJWTInvalidException;
-import knin.auth.jwt.domain.validate.TokenJWTInvalidRuntimeException;
 import knin.auth.jwt.factory.AuthFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -17,9 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IntrospectTest {
@@ -45,8 +40,10 @@ class IntrospectTest {
 
         Introspect introspect = createIntrospect();
 
-        Introspection introspection = introspect.introspect(jwt).join();
+        Result<Introspection> result = introspect.introspect(jwt).join();
 
+        assertTrue(result.hasResult());
+        Introspection introspection = result.get();
         assertNotNull(introspection);
         assertTrue(introspection.hasToken());
 
@@ -72,8 +69,10 @@ class IntrospectTest {
 
         Introspect introspect = createIntrospect();
 
-        Introspection introspection = introspect.introspect(jwt4Parts).join();
+        Result<Introspection> result = introspect.introspect(jwt4Parts).join();
 
+        assertTrue(result.hasResult());
+        Introspection introspection = result.get();
         assertNotNull(introspection);
         assertTrue(introspection.hasToken());
 
@@ -87,42 +86,47 @@ class IntrospectTest {
     }
 
     @Test
-    @DisplayName("Should return empty introspection when JWKS is not found for the kid")
+    @DisplayName("Should return empty result when JWKS is not found for the kid")
     void shouldReturnEmptyIntrospectionWhenKeyNotFoundInJwksRetriever() throws Exception {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String jwt = TokenTestHelper.createJwt(rsaJWK, "non-existent-kid", futureExp, "A B");
 
         Introspect introspect = createIntrospect();
 
-        Introspection introspection = introspect.introspect(jwt).join();
+        Result<Introspection> result = introspect.introspect(jwt).join();
 
-        assertNotNull(introspection);
-        assertFalse(introspection.hasToken());
-        assertThrows(NullPointerException.class, introspection::token);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+        assertFalse(result.hasResult());
     }
 
     @Test
-    @DisplayName("Should synchronously throw TokenJWTInvalidException for malformed, blank or null tokens")
-    void shouldThrowTokenJWTInvalidExceptionForMalformedToken() {
+    @DisplayName("Should return error Result for malformed, blank or null tokens")
+    void shouldReturnErrorResultForMalformedToken() {
         Introspect introspect = createIntrospect();
 
-        assertThrows(TokenJWTInvalidException.class, () -> introspect.introspect("not.a.valid.jwt"));
-        assertThrows(TokenJWTInvalidException.class, () -> introspect.introspect(null));
-        assertThrows(TokenJWTInvalidException.class, () -> introspect.introspect("   "));
+        Result<Introspection> res1 = introspect.introspect("not.a.valid.jwt").join();
+        assertTrue(res1.isError());
+
+        Result<Introspection> res2 = introspect.introspect(null).join();
+        assertTrue(res2.isError());
+
+        Result<Introspection> res3 = introspect.introspect("   ").join();
+        assertTrue(res3.isError());
     }
 
     @Test
-    @DisplayName("Should complete exceptionally when token is expired")
-    void shouldCompleteExceptionallyWhenTokenIsExpired() throws Exception {
+    @DisplayName("Should return error Result when token is expired")
+    void shouldReturnErrorResultWhenTokenIsExpired() throws Exception {
         Date pastExp = new Date(System.currentTimeMillis() - 60_000);
         String expiredJwt = TokenTestHelper.createJwt(rsaJWK, "auth-key-jwks-1", pastExp, "A");
 
         Introspect introspect = createIntrospect();
 
-        CompletableFuture<Introspection> future = introspect.introspect(expiredJwt);
+        Result<Introspection> result = introspect.introspect(expiredJwt).join();
 
-        CompletionException ex = assertThrows(CompletionException.class, future::join);
-        assertInstanceOf(TokenJWTInvalidRuntimeException.class, ex.getCause());
+        assertTrue(result.isError());
+        assertFalse(result.hasResult());
     }
 
     @Test
@@ -135,8 +139,10 @@ class IntrospectTest {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String ecJwt = TokenTestHelper.createEcJwt(ecKey, "auth-key-ec-1", futureExp, "EC_READ EC_WRITE");
 
-        Introspection introspection = introspect.introspect(ecJwt).join();
+        Result<Introspection> result = introspect.introspect(ecJwt).join();
 
+        assertTrue(result.hasResult());
+        Introspection introspection = result.get();
         assertNotNull(introspection);
         assertTrue(introspection.hasToken());
         Token token = introspection.token();
@@ -155,8 +161,10 @@ class IntrospectTest {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String ecJwt4Parts = TokenTestHelper.createFourPartsEcJwt(ecKey, "auth-key-ec-2", futureExp, "ADMIN,EC_USER");
 
-        Introspection introspection = introspect.introspect(ecJwt4Parts).join();
+        Result<Introspection> result = introspect.introspect(ecJwt4Parts).join();
 
+        assertTrue(result.hasResult());
+        Introspection introspection = result.get();
         assertNotNull(introspection);
         assertTrue(introspection.hasToken());
         Token token = introspection.token();
@@ -166,16 +174,16 @@ class IntrospectTest {
     }
 
     @Test
-    @DisplayName("Should complete exceptionally when token signature is invalid")
-    void shouldCompleteExceptionallyWhenSignatureIsInvalid() throws Exception {
+    @DisplayName("Should return error Result when token signature is invalid")
+    void shouldReturnErrorResultWhenSignatureIsInvalid() throws Exception {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String invalidSignedJwt = TokenTestHelper.createJwt(otherRsaJWK, "auth-key-jwks-1", futureExp, "A");
 
         Introspect introspect = createIntrospect();
 
-        CompletableFuture<Introspection> future = introspect.introspect(invalidSignedJwt);
+        Result<Introspection> result = introspect.introspect(invalidSignedJwt).join();
 
-        CompletionException ex = assertThrows(CompletionException.class, future::join);
-        assertInstanceOf(TokenJWTInvalidRuntimeException.class, ex.getCause());
+        assertTrue(result.isError());
+        assertFalse(result.hasResult());
     }
 }

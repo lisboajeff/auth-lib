@@ -1,10 +1,10 @@
 package knin.auth.jwt.adapter.validate;
 
+import knin.auth.jwt.domain.result.Result;
 import knin.auth.jwt.domain.retriever.JsonWebKeys;
 import knin.auth.jwt.domain.validate.TokenData;
 import knin.auth.jwt.domain.validate.TokenHandle;
 import knin.auth.jwt.domain.validate.TokenJWTInvalidException;
-import knin.auth.jwt.domain.validate.TokenJWTInvalidRuntimeException;
 
 import java.util.Set;
 
@@ -17,20 +17,20 @@ public final class TokenHandleProxy implements TokenHandle {
     private final TokenUtil proxy;
 
     @Override
-    public String getKid(String jwt) throws TokenJWTInvalidException {
+    public Result<String> getKid(String jwt) {
         if (jwt == null || jwt.isBlank()) {
-            throw new TokenJWTInvalidException();
+            return Result.failed(new TokenJWTInvalidException());
         }
         return proxy.getKid(jwt);
     }
 
     @Override
-    public TokenData decode(JsonWebKeys jsonWebKeys, String jwt) throws TokenJWTInvalidRuntimeException {
+    public Result<TokenData> decode(JsonWebKeys jsonWebKeys, String jwt) {
         if (jsonWebKeys == null || jsonWebKeys.toBytes() == null) {
-            throw new TokenJWTInvalidRuntimeException("Keys cannot be null");
+            return Result.failed(new TokenJWTInvalidException("Keys cannot be null"));
         }
         if (jwt == null || jwt.isBlank()) {
-            throw new TokenJWTInvalidRuntimeException("JWT cannot be null or blank");
+            return Result.failed(new TokenJWTInvalidException("JWT cannot be null or blank"));
         }
         return proxy.decode(jsonWebKeys, jwt);
     }

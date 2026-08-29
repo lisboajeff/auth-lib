@@ -4,6 +4,7 @@ import knin.auth.jwt.adapter.retriever.InMemory;
 import knin.auth.jwt.adapter.retriever.Source;
 import knin.auth.jwt.adapter.retriever.SourceChain;
 import knin.auth.jwt.adapter.validate.TokenHandleProxy;
+import knin.auth.jwt.domain.logging.Log;
 import knin.auth.jwt.domain.retriever.Keys;
 import knin.auth.jwt.domain.retriever.TableChain;
 import knin.auth.jwt.domain.validate.TokenHandle;
@@ -19,20 +20,37 @@ public final class AuthFactory {
     }
 
     public Introspect createIntrospect(final TokenHandle tokenHandle, final TableChain<? super String> tableChain) {
-        final Keys keys = new InMemory(tableChain);
+        return createIntrospect(tokenHandle, tableChain, Log.systemOut());
+    }
+
+    public Introspect createIntrospect(final TokenHandle tokenHandle, final TableChain<? super String> tableChain,
+            final Log log) {
+        final Keys keys = new InMemory(tableChain, log);
         return new Introspect(tokenHandle, keys);
     }
 
     public Introspect createIntrospect(final TableChain<? super String> tableChain) {
-        return createIntrospect(createTokenHandle(), tableChain);
+        return createIntrospect(createTokenHandle(), tableChain, Log.systemOut());
+    }
+
+    public Introspect createIntrospect(final TableChain<? super String> tableChain, final Log log) {
+        return createIntrospect(createTokenHandle(), tableChain, log);
     }
 
     public TableChain<String> createSource(final TokenHandle tokenHandle, final Source source) {
         return new SourceChain(source, tokenHandle);
     }
 
+    public TableChain<String> createSource(final TokenHandle tokenHandle, final Source source,
+            final TableChain<? super String> next) {
+        return new SourceChain(source, tokenHandle, next);
+    }
+
     public TableChain<String> createSource(final Source source) {
         return createSource(createTokenHandle(), source);
     }
 
+    public TableChain<String> createSource(final Source source, final TableChain<? super String> next) {
+        return createSource(createTokenHandle(), source, next);
+    }
 }

@@ -1,11 +1,11 @@
 package knin.auth.jwt.domain.retriever;
 
+import knin.auth.jwt.domain.result.Result;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
@@ -22,9 +22,9 @@ class TableChainTest {
         final Set<String> identifiers = Set.of("123", "345");
         final TableChainSkeleton table = createTable(identifiers);
 
-        final Optional<JsonWebKeys> optional = table.get("123").join();
+        final Result<JsonWebKeys> optional = table.get("123").join();
 
-        assertTrue(optional.isPresent());
+        assertTrue(optional.hasResult());
         final JsonWebKeys jsonWebKeys = optional.get();
         assertArrayEquals("COMPLETE".getBytes(StandardCharsets.UTF_8), jsonWebKeys.toBytes());
         assertEquals(identifiers, jsonWebKeys.getIds());
@@ -35,7 +35,7 @@ class TableChainTest {
     void shouldReturnEmptyWhenKeyDoesNotExist() {
         final TableChainSkeleton table = createEmptyTable();
 
-        final Optional<JsonWebKeys> optional = table.get("123").join();
+        final Result<JsonWebKeys> optional = table.get("123").join();
 
         assertTrue(optional.isEmpty());
     }
@@ -48,8 +48,8 @@ class TableChainTest {
 
         final TableChainSkeleton table = new TableChainSkeleton(createTable(identifiers)) {
             @Override
-            protected CompletableFuture<Optional<JsonWebKeys>> fetch(final String s) {
-                return CompletableFuture.completedFuture(Optional.empty());
+            protected CompletableFuture<Result<JsonWebKeys>> fetch(final String s) {
+                return CompletableFuture.completedFuture(Result.empty());
             }
 
             @Override
@@ -58,9 +58,9 @@ class TableChainTest {
             }
         };
 
-        final Optional<JsonWebKeys> optional = table.get("123").join();
+        final Result<JsonWebKeys> optional = table.get("123").join();
 
-        assertTrue(optional.isPresent());
+        assertTrue(optional.hasResult());
         final JsonWebKeys jsonWebKeys = optional.get();
         assertEquals(atomic.get(), jsonWebKeys);
         assertArrayEquals("COMPLETE".getBytes(StandardCharsets.UTF_8), jsonWebKeys.toBytes());
@@ -70,8 +70,8 @@ class TableChainTest {
     private static TableChainSkeleton createEmptyTable() {
         return new TableChainSkeleton() {
             @Override
-            protected CompletableFuture<Optional<JsonWebKeys>> fetch(final String s) {
-                return CompletableFuture.completedFuture(Optional.empty());
+            protected CompletableFuture<Result<JsonWebKeys>> fetch(final String s) {
+                return CompletableFuture.completedFuture(Result.empty());
             }
         };
     }
@@ -79,9 +79,9 @@ class TableChainTest {
     private static TableChainSkeleton createTable(final Set<String> identifiers) {
         return new TableChainSkeleton(createEmptyTable()) {
             @Override
-            protected CompletableFuture<Optional<JsonWebKeys>> fetch(final String s) {
+            protected CompletableFuture<Result<JsonWebKeys>> fetch(final String s) {
                 return CompletableFuture.completedFuture(
-                        Optional.of(
+                        Result.of(
                                 new JsonWebKeysSkeleton() {
                                     @Override
                                     public byte[] toBytes() {

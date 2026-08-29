@@ -8,13 +8,12 @@ import java.util.Set;
 
 import com.nimbusds.jose.jwk.RSAKey;
 import knin.auth.jwt.adapter.TokenTestHelper;
+import knin.auth.jwt.domain.result.Result;
 import knin.auth.jwt.domain.retriever.JsonWebKeys;
 import knin.auth.jwt.domain.validate.JWT;
 import knin.auth.jwt.domain.validate.Token;
 import knin.auth.jwt.domain.validate.TokenData;
 import knin.auth.jwt.domain.validate.TokenHandle;
-import knin.auth.jwt.domain.validate.TokenJWTInvalidException;
-import knin.auth.jwt.domain.validate.TokenJWTInvalidRuntimeException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,8 +22,8 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TokenUtilTest {
@@ -81,32 +80,37 @@ class TokenUtilTest {
 
     @Test
     @DisplayName("Should extract kid successfully from a valid JWT token")
-    void shouldExtractKidSuccessfully() throws TokenJWTInvalidException {
+    void shouldExtractKidSuccessfully() {
         String headerJson = "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"my-key-id-123\"}";
         String headerB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(headerJson.getBytes(StandardCharsets.UTF_8));
         String jwt = headerB64 + ".eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature";
 
-        String kid = tokenUtil.getKid(jwt);
+        Result<String> kidResult = tokenUtil.getKid(jwt);
 
-        assertEquals("my-key-id-123", kid);
+        assertTrue(kidResult.hasResult());
+        assertEquals("my-key-id-123", kidResult.get());
     }
 
     @Test
-    @DisplayName("Should throw TokenJWTInvalidException when kid is not present in the header")
-    void shouldThrowWhenNoKidInHeader() {
+    @DisplayName("Should return error Result when kid is not present in the header")
+    void shouldReturnErrorWhenNoKidInHeader() {
         String headerJson = "{\"alg\":\"RS256\",\"typ\":\"JWT\"}";
         String headerB64 = Base64.getUrlEncoder().withoutPadding().encodeToString(headerJson.getBytes(StandardCharsets.UTF_8));
         String jwt = headerB64 + ".eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature";
 
-        assertThrows(TokenJWTInvalidException.class, () -> tokenUtil.getKid(jwt));
+        Result<String> result = tokenUtil.getKid(jwt);
+        assertTrue(result.isError());
+        assertFalse(result.hasResult());
     }
 
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {"   ", "invalid_no_dots", "notbase64!@#.payload.sig"})
-    @DisplayName("Should throw TokenJWTInvalidException for null, blank, or malformed tokens")
-    void shouldThrowForInvalidJwt(String jwt) {
-        assertThrows(TokenJWTInvalidException.class, () -> tokenUtil.getKid(jwt));
+    @DisplayName("Should return error Result for null, blank, or malformed tokens")
+    void shouldReturnErrorForInvalidJwt(String jwt) {
+        Result<String> result = tokenUtil.getKid(jwt);
+        assertTrue(result.isError());
+        assertFalse(result.hasResult());
     }
 
     @Test
@@ -115,8 +119,10 @@ class TokenUtilTest {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String jwt = TokenTestHelper.createJwt(rsaJWK, "auth-key-1", futureExp, "A B C");
 
-        TokenData tokenData = tokenUtil.decode(jsonWebKeys, jwt);
+        Result<TokenData> tokenResult = tokenUtil.decode(jsonWebKeys, jwt);
 
+        assertTrue(tokenResult.hasResult());
+        TokenData tokenData = tokenResult.get();
         assertNotNull(tokenData);
         assertEquals(jwt, tokenData.jwtToString());
         Set<String> scopes = tokenData.getCollectionByKey("scopes");
@@ -129,8 +135,10 @@ class TokenUtilTest {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String jwt = TokenTestHelper.createJwt(rsaJWK, "auth-key-1", futureExp, null);
 
-        TokenData tokenData = tokenUtil.decode(jsonWebKeys, jwt);
+        Result<TokenData> tokenResult = tokenUtil.decode(jsonWebKeys, jwt);
 
+        assertTrue(tokenResult.hasResult());
+        TokenData tokenData = tokenResult.get();
         assertNotNull(tokenData);
         assertEquals(jwt, tokenData.jwtToString());
         Set<String> scopes = tokenData.getCollectionByKey("scopes");
@@ -145,8 +153,10 @@ class TokenUtilTest {
         String jwt3Parts = TokenTestHelper.createJwt(rsaJWK, "auth-key-1", futureExp, null);
         String jwt4Parts = jwt3Parts + "." + TokenTestHelper.gzipAndBase64Url("A,B,C");
 
-        TokenData tokenData = tokenUtil.decode(jsonWebKeys, jwt4Parts);
+        Result<TokenData> tokenResult = tokenUtil.decode(jsonWebKeys, jwt4Parts);
 
+        assertTrue(tokenResult.hasResult());
+        TokenData tokenData = tokenResult.get();
         assertNotNull(tokenData);
         assertEquals(jwt3Parts, tokenData.jwtToString());
         Set<String> scopes = tokenData.getCollectionByKey("scopes");
@@ -154,30 +164,36 @@ class TokenUtilTest {
     }
 
     @Test
-    @DisplayName("Should throw exception when token is expired")
-    void shouldThrowWhenTokenIsExpired() {
+    @DisplayName("Should return error Result when token is expired")
+    void shouldReturnErrorWhenTokenIsExpired() {
         Date pastExp = new Date(System.currentTimeMillis() - 60_000);
         String expiredJwt = TokenTestHelper.createJwt(rsaJWK, "auth-key-1", pastExp, List.of("READ"));
 
-        assertThrows(TokenJWTInvalidRuntimeException.class, () -> tokenUtil.decode(jsonWebKeys, expiredJwt));
+        Result<TokenData> result = tokenUtil.decode(jsonWebKeys, expiredJwt);
+        assertTrue(result.isError());
+        assertFalse(result.hasResult());
     }
 
     @Test
-    @DisplayName("Should throw exception when signature is invalid (signed by different key)")
-    void shouldThrowWhenSignatureIsInvalid() {
+    @DisplayName("Should return error Result when signature is invalid (signed by different key)")
+    void shouldReturnErrorWhenSignatureIsInvalid() {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String invalidSignedJwt = TokenTestHelper.createJwt(otherRsaJWK, "auth-key-1", futureExp, List.of("READ"));
 
-        assertThrows(TokenJWTInvalidRuntimeException.class, () -> tokenUtil.decode(jsonWebKeys, invalidSignedJwt));
+        Result<TokenData> result = tokenUtil.decode(jsonWebKeys, invalidSignedJwt);
+        assertTrue(result.isError());
+        assertFalse(result.hasResult());
     }
 
     @Test
-    @DisplayName("Should throw exception when kid is not found in JWKS")
-    void shouldThrowWhenKidNotFoundInJwks() {
+    @DisplayName("Should return error Result when kid is not found in JWKS")
+    void shouldReturnErrorWhenKidNotFoundInJwks() {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String unknownKidJwt = TokenTestHelper.createJwt(rsaJWK, "unknown-kid-999", futureExp, List.of("READ"));
 
-        assertThrows(TokenJWTInvalidRuntimeException.class, () -> tokenUtil.decode(jsonWebKeys, unknownKidJwt));
+        Result<TokenData> result = tokenUtil.decode(jsonWebKeys, unknownKidJwt);
+        assertTrue(result.isError());
+        assertFalse(result.hasResult());
     }
 
     @Test
@@ -187,8 +203,9 @@ class TokenUtilTest {
         String jwt3Parts = TokenTestHelper.createJwt(rsaJWK, "auth-key-1", futureExp, null);
         String jwt4Parts = jwt3Parts + "." + TokenTestHelper.gzipAndBase64Url("ADMIN, USER");
 
-        TokenData tokenData = tokenUtil.decode(jsonWebKeys, jwt4Parts);
-        Token token = JWT.from(tokenData);
+        Result<TokenData> tokenResult = tokenUtil.decode(jsonWebKeys, jwt4Parts);
+        assertTrue(tokenResult.hasResult());
+        Token token = JWT.from(tokenResult.get());
 
         assertTrue(token.containScopes());
         assertTrue(token.hasScope("admin"));
@@ -217,8 +234,10 @@ class TokenUtilTest {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
         String ecJwt = TokenTestHelper.createEcJwt(ecKey, "ec-auth-key-1", futureExp, "READ WRITE");
 
-        TokenData tokenData = tokenUtil.decode(ecJwks, ecJwt);
+        Result<TokenData> tokenResult = tokenUtil.decode(ecJwks, ecJwt);
 
+        assertTrue(tokenResult.hasResult());
+        TokenData tokenData = tokenResult.get();
         assertNotNull(tokenData);
         assertEquals(ecJwt, tokenData.jwtToString());
         assertEquals(Set.of("READ", "WRITE"), tokenData.getCollectionByKey("scopes"));
@@ -246,8 +265,10 @@ class TokenUtilTest {
         String ecJwt3Parts = TokenTestHelper.createEcJwt(ecKey, "ec-auth-key-2", futureExp, null);
         String ecJwt4Parts = ecJwt3Parts + "." + TokenTestHelper.gzipAndBase64Url("SCOPE_A,SCOPE_B");
 
-        TokenData tokenData = tokenUtil.decode(ecJwks, ecJwt4Parts);
+        Result<TokenData> tokenResult = tokenUtil.decode(ecJwks, ecJwt4Parts);
 
+        assertTrue(tokenResult.hasResult());
+        TokenData tokenData = tokenResult.get();
         assertNotNull(tokenData);
         assertEquals(ecJwt3Parts, tokenData.jwtToString());
         assertEquals(Set.of("SCOPE_A", "SCOPE_B"), tokenData.getCollectionByKey("scopes"));
@@ -276,17 +297,20 @@ class TokenUtilTest {
         String rsaJwt = TokenTestHelper.createJwt(mixedRsa, "mixed-rsa-1", futureExp, "RSA_SCOPE");
         String ecJwt = TokenTestHelper.createEcJwt(mixedEc, "mixed-ec-1", futureExp, "EC_SCOPE");
 
-        TokenData rsaTokenData = tokenUtil.decode(mixedJwks, rsaJwt);
-        TokenData ecTokenData = tokenUtil.decode(mixedJwks, ecJwt);
+        Result<TokenData> rsaResult = tokenUtil.decode(mixedJwks, rsaJwt);
+        Result<TokenData> ecResult = tokenUtil.decode(mixedJwks, ecJwt);
 
-        assertEquals(Set.of("RSA_SCOPE"), rsaTokenData.getCollectionByKey("scopes"));
-        assertEquals(Set.of("EC_SCOPE"), ecTokenData.getCollectionByKey("scopes"));
+        assertTrue(rsaResult.hasResult());
+        assertTrue(ecResult.hasResult());
+        assertEquals(Set.of("RSA_SCOPE"), rsaResult.get().getCollectionByKey("scopes"));
+        assertEquals(Set.of("EC_SCOPE"), ecResult.get().getCollectionByKey("scopes"));
     }
 
     @Test
-    @DisplayName("Should throw exception when jsonWebKeys is null or has null bytes")
-    void shouldThrowWhenJsonWebKeysIsNull() {
-        assertThrows(TokenJWTInvalidRuntimeException.class, () -> tokenUtil.decode(null, "some.valid.jwt"));
+    @DisplayName("Should return error Result when jsonWebKeys is null or has null bytes")
+    void shouldReturnErrorWhenJsonWebKeysIsNull() {
+        Result<TokenData> nullKeysResult = tokenUtil.decode(null, "some.valid.jwt");
+        assertTrue(nullKeysResult.isError());
 
         JsonWebKeys keysWithNullBytes = new JsonWebKeys() {
             @Override
@@ -299,6 +323,7 @@ class TokenUtilTest {
                 return Set.of();
             }
         };
-        assertThrows(TokenJWTInvalidRuntimeException.class, () -> tokenUtil.decode(keysWithNullBytes, "some.valid.jwt"));
+        Result<TokenData> nullBytesResult = tokenUtil.decode(keysWithNullBytes, "some.valid.jwt");
+        assertTrue(nullBytesResult.isError());
     }
 }

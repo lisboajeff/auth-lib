@@ -6,13 +6,8 @@ import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import knin.auth.jwt.adapter.retriever.Source;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
-import software.amazon.awssdk.core.async.AsyncResponseTransformer;
-import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -25,28 +20,20 @@ public class MemoryPolling implements Source {
 
     private static final Logger LOG = Logger.getLogger(MemoryPolling.class);
 
-    private final S3AsyncClient s3AsyncClient;
-    private final String bucket;
-    private final String key;
-    private final S3AsyncSource s3AsyncSource;
+    private final S3BucketReader s3BucketReader;
     private final AtomicReference<byte[]> cachedBytes = new AtomicReference<>();
     private final AtomicReference<String> lastETag = new AtomicReference<>();
     private final AtomicReference<Instant> lastModified = new AtomicReference<>();
 
     @Inject
-    public MemoryPolling(
-            final S3AsyncClient s3AsyncClient,
-            @ConfigProperty(name = "auth.s3.bucket", defaultValue = "auth-bucket") final String bucket,
-            @ConfigProperty(name = "auth.s3.key", defaultValue = "jwks.json") final String key) {
-        this.s3AsyncClient = Objects.requireNonNull(s3AsyncClient, "s3AsyncClient cannot be null");
-        this.bucket = Objects.requireNonNull(bucket, "bucket cannot be null");
-        this.key = Objects.requireNonNull(key, "key cannot be null");
-        this.s3AsyncSource = new S3AsyncSource(s3AsyncClient, bucket, key);
+    public MemoryPolling(final S3BucketReader s3BucketReader) {
+        this.s3BucketReader = Objects.requireNonNull(s3BucketReader, "s3BucketReader cannot be null");
     }
 
     @PostConstruct
     public void init() {
-        LOG.infof("Initializing MemoryPolling for S3 bucket: '%s', key: '%s'...", bucket, key);
+        LOG.infof("Initializing MemoryPolling for S3 bucket: '%s', key: '%s'...",
+                s3BucketReader.getBucket(), s3BucketReader.getKey());
         refreshFromS3().whenComplete((bytes, error) -> {
             if (error != null) {
                 LOG.warnf("Initial S3 fetch failed (will retry on next poll): %s", error.getMessage());
@@ -57,9 +44,8 @@ public class MemoryPolling implements Source {
     }
 
     /**
-     * Polls S3 every 10 seconds using a lightweight HeadObject request.
-     * If the object in S3 has changed (different ETag or LastModified), fetches the
-     * new JWKS.
+     * Polls S3 every 10 seconds using a lightweight HeadObject request via S3BucketReader.
+     * If the object in S3 has changed (different ETag or LastModified), fetches the new JWKS.
      */
     @Scheduled(every = "10s", delay = 10, delayUnit = java.util.concurrent.TimeUnit.SECONDS)
     public void pollS3ForUpdates() {
@@ -68,12 +54,7 @@ public class MemoryPolling implements Source {
     }
 
     public CompletableFuture<Boolean> checkAndRefreshIfUpdated() {
-        final HeadObjectRequest headRequest = HeadObjectRequest.builder()
-                .bucket(bucket)
-                .key(key)
-                .build();
-
-        return s3AsyncClient.headObject(headRequest)
+        return s3BucketReader.headObject()
                 .thenCompose(headResponse -> {
                     final String currentETag = headResponse.eTag();
                     final Instant currentLastModified = headResponse.lastModified();
@@ -96,12 +77,7 @@ public class MemoryPolling implements Source {
     }
 
     public CompletableFuture<byte[]> refreshFromS3() {
-        final GetObjectRequest getRequest = GetObjectRequest.builder()
-                .bucket(bucket)
-                .key(key)
-                .build();
-
-        return s3AsyncClient.getObject(getRequest, AsyncResponseTransformer.toBytes())
+        return s3BucketReader.getObjectBytes()
                 .thenApply(responseBytes -> {
                     final byte[] bytes = responseBytes.asByteArray();
                     final GetObjectResponse response = responseBytes.response();
@@ -118,10 +94,13 @@ public class MemoryPolling implements Source {
 
     @Override
     public CompletableFuture<byte[]> fetchData() {
-        // MemoryPolling returns exclusively what is in its RAM cache.
-        // If not present, returns null future so the TableChain can continue to the
-        // next handler in the chain.
-        return CompletableFuture.completedFuture(cachedBytes.get());
+        final byte[] bytes = cachedBytes.get();
+        if (bytes != null && bytes.length > 0) {
+            LOG.infof("[HIT - Level 2 MemoryPolling] JWKS RAM cache HIT (size: %d bytes, ETag: %s)", bytes.length, lastETag.get());
+        } else {
+            LOG.info("[MISS - Level 2 MemoryPolling] JWKS RAM cache MISS (cache is empty or not yet synchronized with S3)");
+        }
+        return CompletableFuture.completedFuture(bytes);
     }
 
     public byte[] getCachedBytes() {
