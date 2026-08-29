@@ -23,17 +23,28 @@ jobs:
           java-version: '21'
           cache: 'maven'
 
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Python dependencies for Key Rotation Script
+        run: pip install cryptography requests
+
       - name: Build & Run auth-lib Unit Tests
         run: mvn clean test
 
       - name: Install auth-lib to Local Maven Repo
         run: mvn install -DskipTests
 
-      - name: Start LocalStack S3 for Integration Tests
+      - name: Start LocalStack S3
         run: |
           docker run -d --name localstack -p 4566:4566 -e SERVICES=s3 localstack/localstack:latest
           # Wait up to 30s for LocalStack to become healthy
           timeout 30s bash -c 'until curl -s http://localhost:4566/_localstack/health | grep -q "\"s3\""; do sleep 2; done' || true
+
+      - name: Generate RSA Keys and Seed LocalStack S3 JWKS
+        run: python3 s3-demo/scripts/generate_keys_and_upload_s3.py
 
       - name: Run s3-demo Integration & Concurrency Tests
         run: mvn clean test -f s3-demo/pom.xml
