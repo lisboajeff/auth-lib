@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # Maintain dependencies for root Maven project (auth-lib)
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "java"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+
+  # Maintain dependencies for s3-demo Maven project
+  - package-ecosystem: "maven"
+    directory: "/s3-demo"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "quarkus"
+    commit-message:
+      prefix: "build(s3-demo)"
+      include: "scope"
+
+  # Maintain GitHub Actions dependencies (.github/workflows)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
