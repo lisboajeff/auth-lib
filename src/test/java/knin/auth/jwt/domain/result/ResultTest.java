@@ -85,8 +85,7 @@ class ResultTest {
                             () -> {
                                 alternativeCalled.set(true);
                                 return Result.success("fallback");
-                            }
-                    );
+                            });
 
             assertTrue(result.hasResult());
             assertEquals("primary-processed", result.get());
@@ -99,8 +98,7 @@ class ResultTest {
             Result<String> initial = Result.success("input");
 
             CompletableFuture<Result<Integer>> future = initial.mapFuture(
-                    val -> CompletableFuture.supplyAsync(() -> Result.success(val.length()))
-            );
+                    val -> CompletableFuture.supplyAsync(() -> Result.success(val.length())));
 
             Result<Integer> asyncResult = future.get(2, TimeUnit.SECONDS);
             assertNotNull(asyncResult);
@@ -216,8 +214,7 @@ class ResultTest {
                             () -> {
                                 altCalled.set(true);
                                 return Result.success("fallback");
-                            }
-                    );
+                            });
 
             assertTrue(result.isError());
             assertFalse(fnCalled.get());
@@ -234,8 +231,7 @@ class ResultTest {
                     val -> {
                         fnCalled.set(true);
                         return CompletableFuture.completedFuture(Result.success("async"));
-                    }
-            );
+                    });
 
             assertFalse(fnCalled.get());
             Result<String> asyncRes = future.get(2, TimeUnit.SECONDS);
@@ -310,8 +306,7 @@ class ResultTest {
                                 fnCalled.set(true);
                                 return Result.success("from-fn");
                             },
-                            () -> Result.success("from-fallback")
-                    );
+                            () -> Result.success("from-fallback"));
 
             assertFalse(fnCalled.get());
             assertTrue(result.hasResult());
@@ -327,8 +322,7 @@ class ResultTest {
                     val -> {
                         fnCalled.set(true);
                         return CompletableFuture.completedFuture(Result.success(val.length()));
-                    }
-            );
+                    });
 
             assertFalse(fnCalled.get());
             Result<Integer> res = future.get(2, TimeUnit.SECONDS);
@@ -343,12 +337,12 @@ class ResultTest {
     @DisplayName("4. Complex & Hybrid Domain Pipelines")
     class ComplexPipelineTests {
 
-        record UserToken(String kid, String subject, boolean active) {}
+        record UserToken(String kid, String subject, boolean active) {
+        }
 
         @Test
         @DisplayName("Simulate realistic auth pipeline: kid extraction -> key fetch -> token decode -> verify")
         void simulateRealisticAuthPipeline() {
-            String rawJwt = "valid.jwt.token";
 
             Result<String> pipeline = Result.of("kid-auth-1")
                     .flatMap(kid -> Result.success(new UserToken(kid, "john-doe", true)))
@@ -406,7 +400,8 @@ class ResultTest {
         void deepAsyncPipelineTest() throws Exception {
             CompletableFuture<Result<String>> asyncPipeline = Result.success(10)
                     .mapFuture(val -> CompletableFuture.supplyAsync(() -> Result.success(val * 2)))
-                    .thenCompose(res1 -> res1.mapFuture(val -> CompletableFuture.supplyAsync(() -> Result.success("Computed: " + val))))
+                    .thenCompose(res1 -> res1
+                            .mapFuture(val -> CompletableFuture.supplyAsync(() -> Result.success("Computed: " + val))))
                     .thenApply(res2 -> res2.flatMap(str -> Result.success(str + " [DONE]")));
 
             Result<String> finalResult = asyncPipeline.get(2, TimeUnit.SECONDS);
