@@ -31,8 +31,52 @@ jobs:
       - name: Install Python dependencies for Key Rotation Script
         run: pip install cryptography requests
 
-      - name: Build & Run auth-lib Unit Tests
+      - name: Build & Run auth-lib Unit Tests with JaCoCo Coverage
         run: mvn clean test
+
+      - name: Generate JaCoCo Coverage Summary
+        if: always()
+        run: |
+          if [ -f target/site/jacoco/jacoco.csv ]; then
+            echo "### 📊 Code Coverage Summary (auth-lib)" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Total | Missed | Coverage |" >> $GITHUB_STEP_SUMMARY
+            echo "| :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+            python3 -c "
+          import csv
+          with open('target/site/jacoco/jacoco.csv', mode='r') as infile:
+              reader = csv.DictReader(infile)
+              missed_instr, covered_instr = 0, 0
+              missed_branch, covered_branch = 0, 0
+              missed_line, covered_line = 0, 0
+              for row in reader:
+                  missed_instr += int(row['INSTRUCTION_MISSED'])
+                  covered_instr += int(row['INSTRUCTION_COVERED'])
+                  missed_branch += int(row['BRANCH_MISSED'])
+                  covered_branch += int(row['BRANCH_COVERED'])
+                  missed_line += int(row['LINE_MISSED'])
+                  covered_line += int(row['LINE_COVERED'])
+              
+              tot_instr = missed_instr + covered_instr
+              cov_instr = (covered_instr / tot_instr * 100) if tot_instr > 0 else 0
+              
+              tot_branch = missed_branch + covered_branch
+              cov_branch = (covered_branch / tot_branch * 100) if tot_branch > 0 else 0
+              
+              tot_line = missed_line + covered_line
+              cov_line = (covered_line / tot_line * 100) if tot_line > 0 else 0
+              
+              print(f'| Instructions | {tot_instr} | {missed_instr} | **{cov_instr:.2f}%** |')
+              print(f'| Branches | {tot_branch} | {missed_branch} | **{cov_branch:.2f}%** |')
+              print(f'| Lines | {tot_line} | {missed_line} | **{cov_line:.2f}%** |')
+          " >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload JaCoCo Coverage Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: target/site/jacoco/
 
       - name: Install auth-lib to Local Maven Repo
         run: mvn install -DskipTests

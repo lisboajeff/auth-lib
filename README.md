@@ -1,5 +1,11 @@
 # 🔐 auth-lib
 
+[![CI - Build & Test](https://github.com/lisboajeff/auth-lib/actions/workflows/ci.yml/badge.svg)](https://github.com/lisboajeff/auth-lib/actions/workflows/ci.yml)
+![Java](https://img.shields.io/badge/Java-21-orange.svg?logo=openjdk)
+![Tests](https://img.shields.io/badge/Tests-Passing%20(68%20unit%20%2B%209%20integration)-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-JaCoCo-blue)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+
 Uma biblioteca Java moderna, reativa, não-bloqueante e de alto desempenho para validação, introspecção e recuperação encadeada de chaves criptográficas (JWKS / JWT), construída sobre o padrão **Monádico (`Result<T>`)** e **Chain of Responsibility**.
 
 ---
