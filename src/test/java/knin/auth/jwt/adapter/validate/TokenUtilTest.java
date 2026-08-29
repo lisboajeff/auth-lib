@@ -139,15 +139,16 @@ class TokenUtilTest {
     }
 
     @Test
-    @DisplayName("4-part token with scope = 'A,B,C' should return collection containing those scopes")
+    @DisplayName("4-part token with scope = 'A,B,C' should return collection containing those scopes and standard 3-part JWT")
     void shouldExtractScopesFromFourPartsTokenWithCommaSeparatedGzip() throws Exception {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
-        String jwt4Parts = TokenTestHelper.createFourPartsJwt(rsaJWK, "auth-key-1", futureExp, "A,B,C");
+        String jwt3Parts = TokenTestHelper.createJwt(rsaJWK, "auth-key-1", futureExp, null);
+        String jwt4Parts = jwt3Parts + "." + TokenTestHelper.gzipAndBase64Url("A,B,C");
 
         TokenData tokenData = tokenUtil.decode(jsonWebKeys, jwt4Parts);
 
         assertNotNull(tokenData);
-        assertEquals(jwt4Parts, tokenData.jwtToString());
+        assertEquals(jwt3Parts, tokenData.jwtToString());
         Set<String> scopes = tokenData.getCollectionByKey("scopes");
         assertEquals(Set.of("A", "B", "C"), scopes);
     }
@@ -183,7 +184,8 @@ class TokenUtilTest {
     @DisplayName("Should seamlessly integrate with JWT.from(tokenData)")
     void shouldIntegrateWithJWTFrom() throws Exception {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
-        String jwt4Parts = TokenTestHelper.createFourPartsJwt(rsaJWK, "auth-key-1", futureExp, "ADMIN, USER");
+        String jwt3Parts = TokenTestHelper.createJwt(rsaJWK, "auth-key-1", futureExp, null);
+        String jwt4Parts = jwt3Parts + "." + TokenTestHelper.gzipAndBase64Url("ADMIN, USER");
 
         TokenData tokenData = tokenUtil.decode(jsonWebKeys, jwt4Parts);
         Token token = JWT.from(tokenData);
@@ -191,7 +193,7 @@ class TokenUtilTest {
         assertTrue(token.containScopes());
         assertTrue(token.hasScope("admin"));
         assertTrue(token.hasScope("user"));
-        assertEquals(jwt4Parts, token.jwtToString());
+        assertEquals(jwt3Parts, token.jwtToString());
     }
 
     @Test
@@ -241,12 +243,13 @@ class TokenUtilTest {
         };
 
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
-        String ecJwt4Parts = TokenTestHelper.createFourPartsEcJwt(ecKey, "ec-auth-key-2", futureExp, "SCOPE_A,SCOPE_B");
+        String ecJwt3Parts = TokenTestHelper.createEcJwt(ecKey, "ec-auth-key-2", futureExp, null);
+        String ecJwt4Parts = ecJwt3Parts + "." + TokenTestHelper.gzipAndBase64Url("SCOPE_A,SCOPE_B");
 
         TokenData tokenData = tokenUtil.decode(ecJwks, ecJwt4Parts);
 
         assertNotNull(tokenData);
-        assertEquals(ecJwt4Parts, tokenData.jwtToString());
+        assertEquals(ecJwt3Parts, tokenData.jwtToString());
         assertEquals(Set.of("SCOPE_A", "SCOPE_B"), tokenData.getCollectionByKey("scopes"));
     }
 

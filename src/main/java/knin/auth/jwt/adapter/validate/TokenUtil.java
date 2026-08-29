@@ -73,7 +73,7 @@ final class TokenUtil implements TokenHandle {
 
         final JWTClaimsSet claims = processJwt(keys, tokenSplit.toJwtString());
 
-        return createTokenData(tokenSplit, claims, jwt);
+        return createTokenData(tokenSplit, claims);
 
     }
 
@@ -104,8 +104,7 @@ final class TokenUtil implements TokenHandle {
 
             final JWSKeySelector<SecurityContext> keySelector = new JWSVerificationKeySelector<>(
                     expectedAlgorithms,
-                    keySource
-            );
+                    keySource);
 
             jwtProcessor.setJWSKeySelector(keySelector);
 
@@ -116,20 +115,25 @@ final class TokenUtil implements TokenHandle {
         }
     }
 
-    private TokenData createTokenData(final TokenSplit tokenSplit, final JWTClaimsSet claims, final String rawJwt) {
+    private TokenData createTokenData(final TokenSplit tokenSplit, final JWTClaimsSet claims) {
         try {
+
             final Set<String> scopes;
+
             final Optional<String> compacted = tokenSplit.compactedData();
+
             if (compacted.isPresent()) {
                 scopes = parseScopes(compacted.get());
             } else {
                 scopes = extractScopes(claims.getClaims());
             }
+
             final Map<String, Set<String>> collections = new HashMap<>();
 
             collections.put("scopes", scopes);
 
-            return new SimpleTokenData(collections, rawJwt);
+            return new SimpleTokenData(collections, tokenSplit.toJwtString());
+
         } catch (Exception e) {
             throw new TokenJWTInvalidRuntimeException(e.getMessage());
         }
@@ -159,7 +163,7 @@ final class TokenUtil implements TokenHandle {
         return Collections.emptySet();
     }
 
-    private record SimpleTokenData(Map<String, Set<String>> collections, String rawJwt) implements TokenData {
+    private record SimpleTokenData(Map<String, Set<String>> collections, String jwt) implements TokenData {
         @Override
         public Set<String> getCollectionByKey(final String key) {
             return collections.getOrDefault(key, Collections.emptySet());
@@ -167,9 +171,8 @@ final class TokenUtil implements TokenHandle {
 
         @Override
         public String jwtToString() {
-            return rawJwt;
+            return jwt;
         }
     }
 
 }
-

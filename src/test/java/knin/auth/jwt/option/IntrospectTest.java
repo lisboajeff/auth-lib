@@ -64,10 +64,11 @@ class IntrospectTest {
     }
 
     @Test
-    @DisplayName("Should successfully introspect a 4-part (GZIP) token using keys in JWKS format")
+    @DisplayName("Should successfully introspect a 4-part (GZIP) token using keys in JWKS format and return standard 3-part JWT")
     void shouldIntrospectFourPartsTokenSuccessfullyWithJwks() throws Exception {
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
-        String jwt4Parts = TokenTestHelper.createFourPartsJwt(rsaJWK, "auth-key-jwks-1", futureExp, "A,B,C");
+        String jwt3Parts = TokenTestHelper.createJwt(rsaJWK, "auth-key-jwks-1", futureExp, null);
+        String jwt4Parts = jwt3Parts + "." + TokenTestHelper.gzipAndBase64Url("A,B,C");
 
         Introspect introspect = createIntrospect();
 
@@ -82,7 +83,7 @@ class IntrospectTest {
         assertTrue(token.hasScope("a"));
         assertTrue(token.hasScope("b"));
         assertTrue(token.hasScope("c"));
-        assertEquals(jwt4Parts, token.jwtToString());
+        assertEquals(jwt3Parts, token.jwtToString());
     }
 
     @Test
