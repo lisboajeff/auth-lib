@@ -44,10 +44,11 @@ public class MemoryPolling implements Source {
     }
 
     /**
-     * Polls S3 every 10 seconds using a lightweight HeadObject request via S3BucketReader.
+     * Polls S3 periodically using a lightweight HeadObject request via S3BucketReader.
      * If the object in S3 has changed (different ETag or LastModified), fetches the new JWKS.
+     * Configuration parameters: 'auth.polling.every' and 'auth.polling.delay'.
      */
-    @Scheduled(every = "10s", delay = 10, delayUnit = java.util.concurrent.TimeUnit.SECONDS)
+    @Scheduled(identity = "s3-jwks-poller", every = "{auth.polling.every:10s}", delayed = "{auth.polling.delay:10s}")
     public void pollS3ForUpdates() {
         LOG.info("Scheduled poll: checking S3 for JWKS updates...");
         checkAndRefreshIfUpdated();
