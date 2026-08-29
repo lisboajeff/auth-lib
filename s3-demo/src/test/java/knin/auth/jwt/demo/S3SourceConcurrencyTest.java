@@ -97,7 +97,7 @@ class S3SourceConcurrencyTest {
         final ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         final CountDownLatch startLatch = new CountDownLatch(1);
         final CountDownLatch doneLatch = new CountDownLatch(threadCount);
-        final List<CompletableFuture<Introspection>> futures = new CopyOnWriteArrayList<>();
+        final List<CompletableFuture<knin.auth.jwt.domain.result.Result<Introspection>>> futures = new CopyOnWriteArrayList<>();
 
         for (int i = 0; i < threadCount; i++) {
             executor.submit(() -> {
@@ -116,8 +116,11 @@ class S3SourceConcurrencyTest {
         startLatch.countDown();
         assertTrue(doneLatch.await(10, TimeUnit.SECONDS), "All 100 threads should complete execution");
 
-        for (CompletableFuture<Introspection> f : futures) {
-            final Introspection introspection = f.get(10, TimeUnit.SECONDS);
+        for (CompletableFuture<knin.auth.jwt.domain.result.Result<Introspection>> f : futures) {
+            final knin.auth.jwt.domain.result.Result<Introspection> result = f.get(10, TimeUnit.SECONDS);
+            assertNotNull(result);
+            assertTrue(result.hasResult(), "Result must be successful");
+            final Introspection introspection = result.get();
             assertNotNull(introspection);
             assertTrue(introspection.hasToken(), "Introspection must contain valid token");
 
@@ -172,8 +175,11 @@ class S3SourceConcurrencyTest {
 
         // 4. Sign a JWT with the new key and introspect it
         final String jwtNew = createJwtWithSigningKey(rsaJwk2, newKid, "NEW_FEATURE");
-        final Introspection introspection = introspect.introspect(jwtNew).join();
+        final knin.auth.jwt.domain.result.Result<Introspection> resNew = introspect.introspect(jwtNew).join();
 
+        assertNotNull(resNew);
+        assertTrue(resNew.hasResult());
+        final Introspection introspection = resNew.get();
         assertNotNull(introspection);
         assertTrue(introspection.hasToken());
         final Token token = introspection.token();
@@ -195,7 +201,7 @@ class S3SourceConcurrencyTest {
         final ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         final CountDownLatch startLatch = new CountDownLatch(1);
         final CountDownLatch doneLatch = new CountDownLatch(threadCount);
-        final List<CompletableFuture<Introspection>> futures = new CopyOnWriteArrayList<>();
+        final List<CompletableFuture<knin.auth.jwt.domain.result.Result<Introspection>>> futures = new CopyOnWriteArrayList<>();
 
         for (int i = 0; i < threadCount; i++) {
             executor.submit(() -> {
@@ -213,8 +219,11 @@ class S3SourceConcurrencyTest {
         startLatch.countDown();
         assertTrue(doneLatch.await(10, TimeUnit.SECONDS), "All 100 threads should complete execution");
 
-        for (CompletableFuture<Introspection> f : futures) {
-            final Introspection introspection = f.get(10, TimeUnit.SECONDS);
+        for (CompletableFuture<knin.auth.jwt.domain.result.Result<Introspection>> f : futures) {
+            final knin.auth.jwt.domain.result.Result<Introspection> result = f.get(10, TimeUnit.SECONDS);
+            assertNotNull(result);
+            assertTrue(result.hasResult());
+            final Introspection introspection = result.get();
             assertNotNull(introspection);
             assertTrue(introspection.hasToken());
 

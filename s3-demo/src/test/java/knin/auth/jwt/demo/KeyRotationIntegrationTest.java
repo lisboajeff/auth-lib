@@ -56,6 +56,7 @@ class KeyRotationIntegrationTest {
     @BeforeAll
     void setUp() {
         try {
+            s3AsyncClient.listBuckets().join();
             try {
                 s3AsyncClient.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build()).join();
             } catch (Exception ignored) {}
@@ -100,7 +101,10 @@ class KeyRotationIntegrationTest {
         final String token1 = createSignedToken(keyPair1, kid1, "alice", "READ WRITE");
 
         // Verify Token 1 works immediately
-        final Introspection intro1 = introspect.introspect(token1).join();
+        final knin.auth.jwt.domain.result.Result<Introspection> res1 = introspect.introspect(token1).join();
+        assertNotNull(res1);
+        assertTrue(res1.hasResult(), "Token 1 signed with Key 1 must be valid");
+        final Introspection intro1 = res1.get();
         assertNotNull(intro1);
         assertTrue(intro1.hasToken(), "Token 1 signed with Key 1 must be valid");
         assertTrue(intro1.token().hasScope("read"));

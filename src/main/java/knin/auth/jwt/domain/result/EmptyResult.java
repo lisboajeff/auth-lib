@@ -5,31 +5,27 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-final class FailedResult<Data> implements Result<Data> {
+final class EmptyResult<Data> implements Result<Data> {
 
-    FailedResult(final ResultException exception) {
-        this.exception = exception;
-    }
-
-    private final ResultException exception;
+    static final EmptyResult<?> D_EMPTY_RESULT = new EmptyResult<>();
 
     @Override
     public <Other> Result<Other> flatMap(final Function<? super Data, ? extends Result<Other>> function) {
-        return new FailedResult<>(exception);
+        return Result.empty();
     }
 
     @Override
     public <Other> Result<Other> flatMapOrElse(final Function<? super Data, ? extends Result<Other>> function, final Supplier<? extends Result<Other>> alternative) {
-        return flatMap(function);
+        return alternative.get();
     }
 
     @Override
     public <Other> CompletableFuture<Result<Other>> mapFuture(final Function<? super Data, ? extends CompletableFuture<Result<Other>>> function) {
-        return CompletableFuture.completedFuture(Result.failed(exception));
+        return CompletableFuture.completedFuture(Result.empty());
     }
 
     @Override
-    public Result<Data> Ok(final Consumer<? super Data> consumer) {
+    public Result<Data> Ok(Consumer<? super Data> consumer) {
         return this;
     }
 
@@ -40,7 +36,7 @@ final class FailedResult<Data> implements Result<Data> {
 
     @Override
     public boolean isError() {
-        return true;
+        return false;
     }
 
     @Override
@@ -50,13 +46,12 @@ final class FailedResult<Data> implements Result<Data> {
 
     @Override
     public Result<Data> Error(final Consumer<? super ResultException> consumer) {
-        consumer.accept(exception);
         return this;
     }
 
     @Override
     public boolean isEmpty() {
-        return false;
+        return true;
     }
 
 }

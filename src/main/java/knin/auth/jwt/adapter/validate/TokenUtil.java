@@ -24,11 +24,11 @@ import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
 import com.nimbusds.jwt.proc.DefaultJWTProcessor;
+import knin.auth.jwt.domain.result.Result;
 import knin.auth.jwt.domain.retriever.JsonWebKeys;
 import knin.auth.jwt.domain.validate.TokenData;
 import knin.auth.jwt.domain.validate.TokenHandle;
 import knin.auth.jwt.domain.validate.TokenJWTInvalidException;
-import knin.auth.jwt.domain.validate.TokenJWTInvalidRuntimeException;
 
 final class TokenUtil implements TokenHandle {
 
@@ -38,12 +38,12 @@ final class TokenUtil implements TokenHandle {
     }
 
     @Override
-    public String getKid(final String jwt) throws TokenJWTInvalidException {
+    public Result<String> getKid(final String jwt) {
 
         final int firstDotIndex = jwt.indexOf('.');
 
         if (firstDotIndex <= 0) {
-            throw new TokenJWTInvalidException();
+            return Result.failed(new TokenJWTInvalidException());
         }
 
         final String headerB64 = jwt.substring(0, firstDotIndex);
@@ -54,27 +54,25 @@ final class TokenUtil implements TokenHandle {
 
             final Matcher matcher = KID_PATTERN.matcher(headerJson);
             if (matcher.find()) {
-                return matcher.group(1);
+                return Result.of(matcher.group(1));
             }
-            throw new TokenJWTInvalidException();
-        } catch (IllegalArgumentException e) {
-            throw new TokenJWTInvalidException();
+        } catch (final IllegalArgumentException ignored) {
         }
+        return Result.failed(new TokenJWTInvalidException());
     }
 
     @Override
-    public TokenData decode(final JsonWebKeys keys, final String jwt) throws TokenJWTInvalidRuntimeException {
+    public Result<TokenData> decode(final JsonWebKeys keys, final String jwt) {
 
         final TokenSplit tokenSplit = new TokenSplit(jwt);
 
         if (!tokenSplit.isValid()) {
-            throw new TokenJWTInvalidRuntimeException("Not Token Valid");
+            return Result.failed(new TokenJWTInvalidException("Not Token Valid"));
         }
 
-        final JWTClaimsSet claims = processJwt(keys, tokenSplit.toJwtString());
+        final Result<JWTClaimsSet> result = processJwt(keys, tokenSplit.toJwtString());
 
-        return createTokenData(tokenSplit, claims);
-
+        return result.flatMap(jwtClaimsSet -> createTokenData(tokenSplit, jwtClaimsSet));
     }
 
     @Override
@@ -90,7 +88,7 @@ final class TokenUtil implements TokenHandle {
         }
     }
 
-    private JWTClaimsSet processJwt(final JsonWebKeys keys, final String standardJwt) {
+    private Result<JWTClaimsSet> processJwt(final JsonWebKeys keys, final String standardJwt) {
 
         try {
 
@@ -108,14 +106,14 @@ final class TokenUtil implements TokenHandle {
 
             jwtProcessor.setJWSKeySelector(keySelector);
 
-            return jwtProcessor.process(standardJwt, null);
+            return Result.of(jwtProcessor.process(standardJwt, null));
 
         } catch (Exception e) {
-            throw new TokenJWTInvalidRuntimeException(e.getMessage());
+            return Result.failed(new TokenJWTInvalidException(e.getMessage()));
         }
     }
 
-    private TokenData createTokenData(final TokenSplit tokenSplit, final JWTClaimsSet claims) {
+    private Result<TokenData> createTokenData(final TokenSplit tokenSplit, final JWTClaimsSet claims) {
         try {
 
             final Set<String> scopes;
@@ -132,10 +130,10 @@ final class TokenUtil implements TokenHandle {
 
             collections.put("scopes", scopes);
 
-            return new SimpleTokenData(collections, tokenSplit.toJwtString());
+            return Result.success(new SimpleTokenData(collections, tokenSplit.toJwtString()));
 
         } catch (Exception e) {
-            throw new TokenJWTInvalidRuntimeException(e.getMessage());
+            return Result.failed(new TokenJWTInvalidException(e.getMessage()));
         }
     }
 

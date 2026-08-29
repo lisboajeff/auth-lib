@@ -1,6 +1,5 @@
 package knin.auth.jwt.adapter.retriever;
 
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -10,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.nimbusds.jose.jwk.RSAKey;
 import knin.auth.jwt.adapter.TokenTestHelper;
 import knin.auth.jwt.adapter.validate.TokenHandleProxy;
+import knin.auth.jwt.domain.result.Result;
 import knin.auth.jwt.domain.retriever.JsonWebKeys;
 import knin.auth.jwt.domain.validate.TokenHandle;
 import org.junit.jupiter.api.DisplayName;
@@ -32,9 +32,9 @@ class SourceChainTest {
         Source source = () -> CompletableFuture.completedFuture(jwksBytes);
         SourceChain sourceChain = new SourceChain(source, handle);
 
-        Optional<JsonWebKeys> result = sourceChain.fetch("source-kid-1").join();
+        Result<JsonWebKeys> result = sourceChain.fetch("source-kid-1").join();
 
-        assertTrue(result.isPresent());
+        assertTrue(result.hasResult());
         assertEquals(Set.of("source-kid-1"), result.get().getIds());
     }
 
@@ -47,9 +47,9 @@ class SourceChainTest {
         Source source = () -> CompletableFuture.completedFuture(jwksBytes);
         SourceChain sourceChain = new SourceChain(source, handle);
 
-        Optional<JsonWebKeys> result = sourceChain.fetch("non-existent-kid").join();
+        Result<JsonWebKeys> result = sourceChain.fetch("non-existent-kid").join();
 
-        assertFalse(result.isPresent());
+        assertFalse(result.hasResult());
     }
 
     @Test
@@ -70,11 +70,11 @@ class SourceChainTest {
 
         // Trigger 5 concurrent requests for the same kid while the future is still
         // pending
-        CompletableFuture<Optional<JsonWebKeys>> req1 = sourceChain.fetch("concurrent-kid-1");
-        CompletableFuture<Optional<JsonWebKeys>> req2 = sourceChain.fetch("concurrent-kid-1");
-        CompletableFuture<Optional<JsonWebKeys>> req3 = sourceChain.fetch("concurrent-kid-1");
-        CompletableFuture<Optional<JsonWebKeys>> req4 = sourceChain.fetch("concurrent-kid-1");
-        CompletableFuture<Optional<JsonWebKeys>> req5 = sourceChain.fetch("concurrent-kid-1");
+        CompletableFuture<Result<JsonWebKeys>> req1 = sourceChain.fetch("concurrent-kid-1");
+        CompletableFuture<Result<JsonWebKeys>> req2 = sourceChain.fetch("concurrent-kid-1");
+        CompletableFuture<Result<JsonWebKeys>> req3 = sourceChain.fetch("concurrent-kid-1");
+        CompletableFuture<Result<JsonWebKeys>> req4 = sourceChain.fetch("concurrent-kid-1");
+        CompletableFuture<Result<JsonWebKeys>> req5 = sourceChain.fetch("concurrent-kid-1");
 
         // source.fetchData() should have been called only ONCE
         assertEquals(1, callCount.get());
@@ -83,17 +83,17 @@ class SourceChainTest {
         delayedFuture.complete(jwksBytes);
 
         // All 5 requests must obtain the same successful result
-        Optional<JsonWebKeys> r1 = req1.get(2, TimeUnit.SECONDS);
-        Optional<JsonWebKeys> r2 = req2.get(2, TimeUnit.SECONDS);
-        Optional<JsonWebKeys> r3 = req3.get(2, TimeUnit.SECONDS);
-        Optional<JsonWebKeys> r4 = req4.get(2, TimeUnit.SECONDS);
-        Optional<JsonWebKeys> r5 = req5.get(2, TimeUnit.SECONDS);
+        Result<JsonWebKeys> r1 = req1.get(2, TimeUnit.SECONDS);
+        Result<JsonWebKeys> r2 = req2.get(2, TimeUnit.SECONDS);
+        Result<JsonWebKeys> r3 = req3.get(2, TimeUnit.SECONDS);
+        Result<JsonWebKeys> r4 = req4.get(2, TimeUnit.SECONDS);
+        Result<JsonWebKeys> r5 = req5.get(2, TimeUnit.SECONDS);
 
-        assertTrue(r1.isPresent());
-        assertTrue(r2.isPresent());
-        assertTrue(r3.isPresent());
-        assertTrue(r4.isPresent());
-        assertTrue(r5.isPresent());
+        assertTrue(r1.hasResult());
+        assertTrue(r2.hasResult());
+        assertTrue(r3.hasResult());
+        assertTrue(r4.hasResult());
+        assertTrue(r5.hasResult());
         assertEquals(Set.of("concurrent-kid-1"), r1.get().getIds());
         assertEquals(r1.get().getIds(), r2.get().getIds());
         assertEquals(r1.get().getIds(), r3.get().getIds());
@@ -127,7 +127,7 @@ class SourceChainTest {
         java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(threadCount);
-        java.util.List<CompletableFuture<Optional<JsonWebKeys>>> futures = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.List<CompletableFuture<Result<JsonWebKeys>>> futures = new java.util.concurrent.CopyOnWriteArrayList<>();
 
         for (int i = 0; i < threadCount; i++) {
             executor.submit(() -> {
@@ -152,9 +152,9 @@ class SourceChainTest {
         delayedFuture.complete(jwksBytes);
 
         // All 50 futures complete with the same successful result
-        for (CompletableFuture<Optional<JsonWebKeys>> f : futures) {
-            Optional<JsonWebKeys> res = f.get(5, TimeUnit.SECONDS);
-            assertTrue(res.isPresent());
+        for (CompletableFuture<Result<JsonWebKeys>> f : futures) {
+            Result<JsonWebKeys> res = f.get(5, TimeUnit.SECONDS);
+            assertTrue(res.hasResult());
             assertEquals(Set.of("heavy-kid-1"), res.get().getIds());
         }
 

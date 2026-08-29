@@ -88,46 +88,45 @@ public class AuthService {
             );
         }
 
-        try {
-            return introspect.introspect(tokenString)
-                    .thenApply(introspection -> {
-                        if (introspection == null || !introspection.hasToken()) {
-                            return VerifyTokenResponse.invalid("Token is invalid, expired, or signing key not found in S3 JWKS");
-                        }
+        return introspect.introspect(tokenString)
+                .thenApply(result -> {
+                    if (result == null || result.isEmpty() || result.isError() || !result.hasResult()) {
+                        return VerifyTokenResponse.invalid("Token is invalid, expired, or signing key not found in S3 JWKS");
+                    }
 
-                        final Token token = introspection.token();
-                        final String formattedJwt = token.jwtToString();
-                        final String tokenKid = extractKidFromJwt(formattedJwt);
+                    final knin.auth.jwt.option.Introspection introspection = result.get();
+                    if (introspection == null || !introspection.hasToken()) {
+                        return VerifyTokenResponse.invalid("Token is invalid, expired, or signing key not found in S3 JWKS");
+                    }
 
-                        final boolean hasScope = requiredScope.isBlank() || token.hasScope(requiredScope);
-                        final Set<String> tokenScopes = token.getScopes();
+                    final Token token = introspection.token();
+                    final String formattedJwt = token.jwtToString();
+                    final String tokenKid = extractKidFromJwt(formattedJwt);
 
-                        if (!hasScope) {
-                            return new VerifyTokenResponse(
-                                    true,
-                                    false,
-                                    tokenKid,
-                                    tokenScopes,
-                                    formattedJwt,
-                                    "Token is valid but missing server required scope: " + requiredScope
-                            );
-                        }
+                    final boolean hasScope = requiredScope.isBlank() || token.hasScope(requiredScope);
+                    final Set<String> tokenScopes = token.getScopes();
 
-                        return VerifyTokenResponse.success(
+                    if (!hasScope) {
+                        return new VerifyTokenResponse(
+                                true,
+                                false,
                                 tokenKid,
                                 tokenScopes,
                                 formattedJwt,
-                                true
+                                "Token is valid but missing server required scope: " + requiredScope
                         );
-                    })
-                    .exceptionally(throwable ->
-                            VerifyTokenResponse.invalid("Token validation failed: " + throwable.getMessage())
+                    }
+
+                    return VerifyTokenResponse.success(
+                            tokenKid,
+                            tokenScopes,
+                            formattedJwt,
+                            true
                     );
-        } catch (TokenJWTInvalidException e) {
-            return CompletableFuture.completedFuture(
-                    VerifyTokenResponse.invalid("Malformed JWT structure: " + e.getMessage())
-            );
-        }
+                })
+                .exceptionally(throwable ->
+                        VerifyTokenResponse.invalid("Token validation failed: " + throwable.getMessage())
+                );
     }
 
     private static String extractKidFromJwt(final String jwt) {

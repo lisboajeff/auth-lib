@@ -1,11 +1,12 @@
 package knin.auth.jwt.domain.retriever;
 
-import java.util.Optional;
+import knin.auth.jwt.domain.result.Result;
+
 import java.util.concurrent.CompletableFuture;
 
 @FunctionalInterface
 public interface Chain<E> {
 
-    CompletableFuture<Optional<JsonWebKeys>> get(final E e);
+    CompletableFuture<Result<JsonWebKeys>> get(final E e);
 
 }
