@@ -53,6 +53,28 @@ public final class JwtSigner {
         }
     }
 
+    public String signFourPartsToken(final String subject, final String gzipScopes, final long expirationMillis) {
+        try {
+            final String jwt3Parts = signToken(subject, null, expirationMillis);
+            final String part4 = gzipAndBase64Url(gzipScopes);
+            return jwt3Parts + "." + part4;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to sign 4-part JWT token", e);
+        }
+    }
+
+    public static String gzipAndBase64Url(final String input) {
+        try {
+            final java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            try (java.util.zip.GZIPOutputStream gzos = new java.util.zip.GZIPOutputStream(baos)) {
+                gzos.write(input.getBytes(StandardCharsets.UTF_8));
+            }
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(baos.toByteArray());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to compress scopes to GZIP Base64URL", e);
+        }
+    }
+
     private static RSAPrivateKey loadPrivateKeyFromResource(final String resourcePath) {
         try (InputStream is = JwtSigner.class.getClassLoader().getResourceAsStream(resourcePath)) {
             if (is == null) {

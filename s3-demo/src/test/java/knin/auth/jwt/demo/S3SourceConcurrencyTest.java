@@ -145,6 +145,56 @@ class S3SourceConcurrencyTest {
     }
 
     @Test
+    @DisplayName("Should successfully introspect 4-part (GZIP) token under 100 concurrent threads using S3 JWKS")
+    void shouldIntrospectFourPartsTokenUnderHeavyConcurrency() throws Exception {
+        if (!isLocalStackAvailable) {
+            System.out.println("[SKIP] LocalStack S3 is not running. Start via docker-compose up -d in s3-demo to run integration test.");
+            return;
+        }
+
+        final String jwt3Parts = jwtSigner.signToken("user-gzip-42", null, 120_000);
+        final String jwt4Parts = jwtSigner.signFourPartsToken("user-gzip-42", "GZIP_READ,GZIP_WRITE,GZIP_ADMIN", 120_000);
+
+        final int threadCount = 100;
+        final ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        final CountDownLatch startLatch = new CountDownLatch(1);
+        final CountDownLatch doneLatch = new CountDownLatch(threadCount);
+        final List<CompletableFuture<Introspection>> futures = new CopyOnWriteArrayList<>();
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                try {
+                    startLatch.await();
+                    futures.add(introspect.introspect(jwt4Parts));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    doneLatch.countDown();
+                }
+            });
+        }
+
+        startLatch.countDown();
+        assertTrue(doneLatch.await(10, TimeUnit.SECONDS), "All 100 threads should complete execution");
+
+        for (CompletableFuture<Introspection> f : futures) {
+            final Introspection introspection = f.get(10, TimeUnit.SECONDS);
+            assertNotNull(introspection);
+            assertTrue(introspection.hasToken());
+
+            final Token token = introspection.token();
+            assertNotNull(token);
+            assertTrue(token.containScopes());
+            assertTrue(token.hasScope("gzip_read"));
+            assertTrue(token.hasScope("gzip_write"));
+            assertTrue(token.hasScope("gzip_admin"));
+            assertEquals(jwt3Parts, token.jwtToString());
+        }
+
+        executor.shutdown();
+    }
+
+    @Test
     @DisplayName("Should successfully coordinate 100 concurrent threads against S3AsyncSource and Auth pipeline")
     void shouldIntrospectConcurrentlyWithS3SourceMock() throws Exception {
         final byte[] jwksBytes = buildJwksFromResourcePem("private_key.pem", KID);
