@@ -9,7 +9,7 @@ WORKDIR /workspace
 # 1. Build and install root auth-lib using persistent .m2 cache
 COPY pom.xml ./root-pom.xml
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn -f root-pom.xml clean install -DskipTests
+RUN --mount=type=cache,target=/root/.m2 mvn -f root-pom.xml clean install
 
 # 2. Build and package Quarkus s3-demo using persistent .m2 cache
 COPY s3-demo/pom.xml ./s3-demo/pom.xml
