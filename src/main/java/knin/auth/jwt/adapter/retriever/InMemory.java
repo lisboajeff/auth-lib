@@ -1,13 +1,15 @@
 package knin.auth.jwt.adapter.retriever;
 
 import knin.auth.jwt.domain.retriever.JsonWebKeys;
+import knin.auth.jwt.domain.retriever.Keys;
 import knin.auth.jwt.domain.retriever.TableChain;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class InMemory extends TableChain<String> {
+public final class InMemory extends TableChain<String> implements Keys {
 
     public InMemory() {
         this.map = new ConcurrentHashMap<>();
@@ -30,9 +32,13 @@ public final class InMemory extends TableChain<String> {
         if (responseData == null || responseData.getIds() == null) {
             return;
         }
-        map.keySet().retainAll(responseData.getIds());
-        for (final String id : responseData.getIds()) {
-            map.put(id, responseData);
+        final Set<String> identifiers = responseData.getIds();
+        for (final String id : identifiers) {
+            if (id != null) {
+                map.put(id, responseData);
+            }
         }
+        map.keySet().removeIf(existingKey -> !identifiers.contains(existingKey));
     }
+
 }

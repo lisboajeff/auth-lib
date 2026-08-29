@@ -7,20 +7,24 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Date;
 import java.util.concurrent.CompletableFuture;
 import java.util.zip.GZIPOutputStream;
 
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.ECDSASigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
-import knin.auth.jwt.domain.retriever.JsonWebKeys;
-import knin.auth.jwt.domain.retriever.TableChain;
+import knin.auth.jwt.adapter.retriever.Source;
 import knin.auth.jwt.domain.validate.TokenHandle;
 
 public final class TokenTestHelper {
@@ -43,27 +47,24 @@ public final class TokenTestHelper {
         }
     }
 
-    public static JsonWebKeys createJsonWebKeys(final TokenHandle handle, final RSAKey... keys) {
-        JWKSet jwkSet = new JWKSet(Arrays.stream(keys).map(k -> (JWK) k.toPublicJWK()).toList());
-        final byte[] jwksBytes = jwkSet.toString().getBytes(StandardCharsets.UTF_8);
-        final Set<String> ids = handle.extractIdentifiers(jwksBytes);
-
-        return new JsonWebKeys() {
-            @Override
-            public byte[] toBytes() {
-                return jwksBytes;
-            }
-
-            @Override
-            public Set<String> getIds() {
-                return ids;
-            }
-        };
+    public static ECKey generateEcJwk(final String keyId) {
+        try {
+            return new ECKeyGenerator(Curve.P_256)
+                    .keyID(keyId)
+                    .generate();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate EC JWK", e);
+        }
     }
 
-    public static TableChain<String> createKeys(final TokenHandle handle, final RSAKey... keys) {
-        final JsonWebKeys jsonWebKeys = createJsonWebKeys(handle, keys);
-        return new InMemoryKeys(jsonWebKeys);
+    public static byte[] createJsonWebKeys(final TokenHandle handle, final JWK... keys) {
+        JWKSet jwkSet = new JWKSet(Arrays.stream(keys).map(JWK::toPublicJWK).toList());
+        return jwkSet.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    public static Source createSource(final TokenHandle handle, final JWK... keys) {
+        final byte[] jsonWebKeys = createJsonWebKeys(handle, keys);
+        return () -> CompletableFuture.completedFuture(jsonWebKeys);
     }
 
     public static String gzipAndBase64Url(final String input) throws IOException {
@@ -86,14 +87,37 @@ public final class TokenTestHelper {
                 builder.claim("scope", scopeClaim);
             }
 
-            SignedJWT signedJWT = new SignedJWT(
+            com.nimbusds.jwt.SignedJWT signedJWT = new com.nimbusds.jwt.SignedJWT(
                     new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(kid).build(),
                     builder.build()
             );
             signedJWT.sign(new RSASSASigner(signingKey.toRSAPrivateKey()));
             return signedJWT.serialize();
         } catch (Exception e) {
-            throw new RuntimeException("Failed to create JWT", e);
+            throw new RuntimeException("Failed to create RSA JWT", e);
+        }
+    }
+
+    public static String createEcJwt(final ECKey signingKey, final String kid, final Date exp, final Object scopeClaim) {
+        try {
+            JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
+                    .subject("test-user")
+                    .issuer("https://auth.example.org")
+                    .issueTime(new Date())
+                    .expirationTime(exp);
+
+            if (scopeClaim != null) {
+                builder.claim("scope", scopeClaim);
+            }
+
+            com.nimbusds.jwt.SignedJWT signedJWT = new com.nimbusds.jwt.SignedJWT(
+                    new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(kid).build(),
+                    builder.build()
+            );
+            signedJWT.sign(new ECDSASigner(signingKey.toECPrivateKey()));
+            return signedJWT.serialize();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create EC JWT", e);
         }
     }
 
@@ -103,25 +127,9 @@ public final class TokenTestHelper {
         return jwt3Parts + "." + part4;
     }
 
-    private static final class InMemoryKeys extends TableChain<String> {
-
-        private final JsonWebKeys jsonWebKeys;
-
-        private InMemoryKeys(final JsonWebKeys jsonWebKeys) {
-            this.jsonWebKeys = jsonWebKeys;
-        }
-
-        @Override
-        protected CompletableFuture<Optional<JsonWebKeys>> fetch(final String kid) {
-            if (kid != null && jsonWebKeys.getIds().contains(kid)) {
-                return CompletableFuture.completedFuture(Optional.of(jsonWebKeys));
-            }
-            return CompletableFuture.completedFuture(Optional.empty());
-        }
-
-        @Override
-        protected void set(final JsonWebKeys responseData) {
-            // No-op for in-memory test implementation
-        }
+    public static String createFourPartsEcJwt(final ECKey signingKey, final String kid, final Date exp, final String gzipScopes) throws IOException {
+        String jwt3Parts = createEcJwt(signingKey, kid, exp, null);
+        String part4 = gzipAndBase64Url(gzipScopes);
+        return jwt3Parts + "." + part4;
     }
 }

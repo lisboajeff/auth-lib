@@ -91,18 +91,26 @@ final class TokenUtil implements TokenHandle {
     }
 
     private JWTClaimsSet processJwt(final JsonWebKeys keys, final String standardJwt) {
+
         try {
+
             final JWKSet jwkSet = JWKSet.parse(new String(keys.toBytes(), StandardCharsets.UTF_8));
+
             final JWKSource<SecurityContext> keySource = new ImmutableJWKSet<>(jwkSet);
 
+            final Set<JWSAlgorithm> expectedAlgorithms = new HashSet<>(JWSAlgorithm.Family.SIGNATURE);
+
             final ConfigurableJWTProcessor<SecurityContext> jwtProcessor = new DefaultJWTProcessor<>();
+
             final JWSKeySelector<SecurityContext> keySelector = new JWSVerificationKeySelector<>(
-                    new HashSet<>(JWSAlgorithm.Family.RSA),
+                    expectedAlgorithms,
                     keySource
             );
+
             jwtProcessor.setJWSKeySelector(keySelector);
 
             return jwtProcessor.process(standardJwt, null);
+
         } catch (Exception e) {
             throw new TokenJWTInvalidRuntimeException(e.getMessage());
         }

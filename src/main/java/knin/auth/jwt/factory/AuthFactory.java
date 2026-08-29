@@ -1,8 +1,9 @@
 package knin.auth.jwt.factory;
 
 import knin.auth.jwt.adapter.retriever.InMemory;
+import knin.auth.jwt.adapter.retriever.Source;
+import knin.auth.jwt.adapter.retriever.SourceChain;
 import knin.auth.jwt.adapter.validate.TokenHandleProxy;
-import knin.auth.jwt.domain.retriever.Chain;
 import knin.auth.jwt.domain.retriever.Keys;
 import knin.auth.jwt.domain.retriever.TableChain;
 import knin.auth.jwt.domain.validate.TokenHandle;
@@ -17,13 +18,21 @@ public final class AuthFactory {
         return new TokenHandleProxy();
     }
 
-    private Introspect createIntrospect(final TokenHandle tokenHandle, final Keys keys) {
+    public Introspect createIntrospect(final TokenHandle tokenHandle, final TableChain<? super String> tableChain) {
+        final Keys keys = new InMemory(tableChain);
         return new Introspect(tokenHandle, keys);
     }
 
-    public Introspect createIntrospect(final TokenHandle tokenHandle, final TableChain<? super String> tableChain) {
-        final Chain<String> keys = new InMemory(tableChain);
-        return createIntrospect(tokenHandle, keys::get);
+    public Introspect createIntrospect(final TableChain<? super String> tableChain) {
+        return createIntrospect(createTokenHandle(), tableChain);
+    }
+
+    public TableChain<String> createSource(final TokenHandle tokenHandle, final Source source) {
+        return new SourceChain(source, tokenHandle);
+    }
+
+    public TableChain<String> createSource(final Source source) {
+        return createSource(createTokenHandle(), source);
     }
 
 }

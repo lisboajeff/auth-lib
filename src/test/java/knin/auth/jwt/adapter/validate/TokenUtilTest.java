@@ -40,7 +40,19 @@ class TokenUtilTest {
         rsaJWK = TokenTestHelper.generateRsaJwk("auth-key-1");
         otherRsaJWK = TokenTestHelper.generateRsaJwk("other-key-2");
         TokenHandle handle = new TokenHandleProxy();
-        jsonWebKeys = TokenTestHelper.createJsonWebKeys(handle, rsaJWK);
+        byte[] keys = TokenTestHelper.createJsonWebKeys(handle, rsaJWK);
+        final Set<String> identifiers = handle.extractIdentifiers(keys);
+        jsonWebKeys = new JsonWebKeys() {
+            @Override
+            public byte[] toBytes() {
+                return keys;
+            }
+
+            @Override
+            public Set<String> getIds() {
+                return identifiers;
+            }
+        };
     }
 
     @Test
@@ -48,9 +60,9 @@ class TokenUtilTest {
     void shouldExtractIdentifiersFromValidJwks() {
         RSAKey key1 = TokenTestHelper.generateRsaJwk("kid-1");
         RSAKey key2 = TokenTestHelper.generateRsaJwk("kid-2");
-        JsonWebKeys keys = TokenTestHelper.createJsonWebKeys(tokenUtil, key1, key2);
+        byte[] keys = TokenTestHelper.createJsonWebKeys(tokenUtil, key1, key2);
 
-        Set<String> ids = tokenUtil.extractIdentifiers(keys.toBytes());
+        Set<String> ids = tokenUtil.extractIdentifiers(keys);
 
         assertNotNull(ids);
         assertEquals(2, ids.size());
@@ -180,6 +192,92 @@ class TokenUtilTest {
         assertTrue(token.hasScope("admin"));
         assertTrue(token.hasScope("user"));
         assertEquals(jwt4Parts, token.jwtToString());
+    }
+
+    @Test
+    @DisplayName("Should successfully decode 3-part token signed with EC (ES256)")
+    void shouldDecodeValidEcTokenSuccessfully() {
+        com.nimbusds.jose.jwk.ECKey ecKey = TokenTestHelper.generateEcJwk("ec-auth-key-1");
+        byte[] ecJwksBytes = TokenTestHelper.createJsonWebKeys(tokenUtil, ecKey);
+        Set<String> ecIds = tokenUtil.extractIdentifiers(ecJwksBytes);
+        JsonWebKeys ecJwks = new JsonWebKeys() {
+            @Override
+            public byte[] toBytes() {
+                return ecJwksBytes;
+            }
+
+            @Override
+            public Set<String> getIds() {
+                return ecIds;
+            }
+        };
+
+        Date futureExp = new Date(System.currentTimeMillis() + 60_000);
+        String ecJwt = TokenTestHelper.createEcJwt(ecKey, "ec-auth-key-1", futureExp, "READ WRITE");
+
+        TokenData tokenData = tokenUtil.decode(ecJwks, ecJwt);
+
+        assertNotNull(tokenData);
+        assertEquals(ecJwt, tokenData.jwtToString());
+        assertEquals(Set.of("READ", "WRITE"), tokenData.getCollectionByKey("scopes"));
+    }
+
+    @Test
+    @DisplayName("Should successfully decode 4-part (GZIP) token signed with EC (ES256)")
+    void shouldDecodeFourPartsEcTokenSuccessfully() throws Exception {
+        com.nimbusds.jose.jwk.ECKey ecKey = TokenTestHelper.generateEcJwk("ec-auth-key-2");
+        byte[] ecJwksBytes = TokenTestHelper.createJsonWebKeys(tokenUtil, ecKey);
+        Set<String> ecIds = tokenUtil.extractIdentifiers(ecJwksBytes);
+        JsonWebKeys ecJwks = new JsonWebKeys() {
+            @Override
+            public byte[] toBytes() {
+                return ecJwksBytes;
+            }
+
+            @Override
+            public Set<String> getIds() {
+                return ecIds;
+            }
+        };
+
+        Date futureExp = new Date(System.currentTimeMillis() + 60_000);
+        String ecJwt4Parts = TokenTestHelper.createFourPartsEcJwt(ecKey, "ec-auth-key-2", futureExp, "SCOPE_A,SCOPE_B");
+
+        TokenData tokenData = tokenUtil.decode(ecJwks, ecJwt4Parts);
+
+        assertNotNull(tokenData);
+        assertEquals(ecJwt4Parts, tokenData.jwtToString());
+        assertEquals(Set.of("SCOPE_A", "SCOPE_B"), tokenData.getCollectionByKey("scopes"));
+    }
+
+    @Test
+    @DisplayName("Should decode both RSA and EC tokens when JWKS contains mixed keys")
+    void shouldDecodeBothRsaAndEcFromMixedJwks() {
+        RSAKey mixedRsa = TokenTestHelper.generateRsaJwk("mixed-rsa-1");
+        com.nimbusds.jose.jwk.ECKey mixedEc = TokenTestHelper.generateEcJwk("mixed-ec-1");
+        byte[] mixedJwksBytes = TokenTestHelper.createJsonWebKeys(tokenUtil, mixedRsa, mixedEc);
+        Set<String> mixedIds = tokenUtil.extractIdentifiers(mixedJwksBytes);
+        JsonWebKeys mixedJwks = new JsonWebKeys() {
+            @Override
+            public byte[] toBytes() {
+                return mixedJwksBytes;
+            }
+
+            @Override
+            public Set<String> getIds() {
+                return mixedIds;
+            }
+        };
+
+        Date futureExp = new Date(System.currentTimeMillis() + 60_000);
+        String rsaJwt = TokenTestHelper.createJwt(mixedRsa, "mixed-rsa-1", futureExp, "RSA_SCOPE");
+        String ecJwt = TokenTestHelper.createEcJwt(mixedEc, "mixed-ec-1", futureExp, "EC_SCOPE");
+
+        TokenData rsaTokenData = tokenUtil.decode(mixedJwks, rsaJwt);
+        TokenData ecTokenData = tokenUtil.decode(mixedJwks, ecJwt);
+
+        assertEquals(Set.of("RSA_SCOPE"), rsaTokenData.getCollectionByKey("scopes"));
+        assertEquals(Set.of("EC_SCOPE"), ecTokenData.getCollectionByKey("scopes"));
     }
 
     @Test
