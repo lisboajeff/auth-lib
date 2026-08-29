@@ -1,4 +1,4 @@
-name: CI - Build & Test
+name: CI Pipeline
 
 on:
   push:
@@ -7,13 +7,20 @@ on:
     branches: [ master, main ]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
-    name: Java 21 - Build and Test
+  # =========================================================================
+  # Stage 1: Build & Unit Test Core Library (auth-lib) + JaCoCo Coverage
+  # =========================================================================
+  build-and-test-lib:
+    name: "Stage 1: Core Lib Build & Unit Tests"
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
@@ -23,22 +30,17 @@ jobs:
           java-version: '21'
           cache: 'maven'
 
-      - name: Set up Python 3
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install Python dependencies for Key Rotation Script
-        run: pip install cryptography requests
-
-      - name: Build & Run auth-lib Unit Tests with JaCoCo Coverage
+      - name: Compile and Run Unit Tests (auth-lib)
         run: mvn clean test
+
+      - name: Package Core Library
+        run: mvn package -DskipTests
 
       - name: Generate JaCoCo Coverage Summary
         if: always()
         run: |
           if [ -f target/site/jacoco/jacoco.csv ]; then
-            echo "### 📊 Code Coverage Summary (auth-lib)" >> $GITHUB_STEP_SUMMARY
+            echo "## 📊 Test Coverage Report (auth-lib)" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Total | Missed | Coverage |" >> $GITHUB_STEP_SUMMARY
             echo "| :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
             python3 -c "
@@ -65,35 +67,90 @@ jobs:
               tot_line = missed_line + covered_line
               cov_line = (covered_line / tot_line * 100) if tot_line > 0 else 0
               
-              print(f'| Instructions | {tot_instr} | {missed_instr} | **{cov_instr:.2f}%** |')
-              print(f'| Branches | {tot_branch} | {missed_branch} | **{cov_branch:.2f}%** |')
-              print(f'| Lines | {tot_line} | {missed_line} | **{cov_line:.2f}%** |')
+              print(f'| **Instructions** | {tot_instr} | {missed_instr} | **{cov_instr:.2f}%** |')
+              print(f'| **Branches** | {tot_branch} | {missed_branch} | **{cov_branch:.2f}%** |')
+              print(f'| **Lines** | {tot_line} | {missed_line} | **{cov_line:.2f}%** |')
           " >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Upload JaCoCo Coverage Report Artifact
+      - name: Upload JaCoCo Coverage Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jacoco-coverage-report
           path: target/site/jacoco/
+          retention-days: 7
 
-      - name: Install auth-lib to Local Maven Repo
+      - name: Upload auth-lib Jar Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-lib-jar
+          path: target/auth-lib-*.jar
+          retention-days: 1
+
+  # =========================================================================
+  # Stage 2: Integration & Concurrency Tests (s3-demo + LocalStack)
+  # =========================================================================
+  integration-test-s3-demo:
+    name: "Stage 2: S3 Demo Integration & Concurrency Tests"
+    needs: [build-and-test-lib]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Python Dependencies
+        run: pip install cryptography requests
+
+      - name: Install auth-lib into Local Maven Cache
         run: mvn install -DskipTests
 
-      - name: Start LocalStack S3
+      - name: Start LocalStack S3 Container
         run: |
           docker run -d --name localstack -p 4566:4566 -e SERVICES=s3 localstack/localstack:latest
-          # Wait up to 30s for LocalStack to become healthy
           timeout 30s bash -c 'until curl -s http://localhost:4566/_localstack/health | grep -q "\"s3\""; do sleep 2; done' || true
 
       - name: Generate RSA Keys and Seed LocalStack S3 JWKS
         run: python3 s3-demo/scripts/generate_keys_and_upload_s3.py
 
-      - name: Run s3-demo Integration & Concurrency Tests
+      - name: Run Quarkus Integration Tests
         run: mvn clean test -f s3-demo/pom.xml
         env:
           AUTH_S3_ENDPOINT: http://localhost:4566
           AUTH_S3_REGION: us-east-1
           AUTH_S3_ACCESS_KEY: test
           AUTH_S3_SECRET_KEY: test
+
+  # =========================================================================
+  # Stage 3: Quality Gate & Pipeline Status
+  # =========================================================================
+  quality-gate:
+    name: "Stage 3: Quality Gate"
+    needs: [build-and-test-lib, integration-test-s3-demo]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Evaluate Pipeline Status
+        run: |
+          if [ "${{ needs.build-and-test-lib.result }}" != "success" ] || [ "${{ needs.integration-test-s3-demo.result }}" != "success" ]; then
+            echo "❌ Pipeline failed! Please check the logs above." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "## ✅ All Quality Gates Passed!" >> $GITHUB_STEP_SUMMARY
+            echo "- **Stage 1**: Core Library Unit Tests & JaCoCo Coverage: **PASSED**" >> $GITHUB_STEP_SUMMARY
+            echo "- **Stage 2**: S3 Demo & Concurrency Integration Tests: **PASSED**" >> $GITHUB_STEP_SUMMARY
+          fi
