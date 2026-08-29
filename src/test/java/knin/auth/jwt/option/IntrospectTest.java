@@ -7,7 +7,6 @@ import java.util.concurrent.CompletionException;
 import com.nimbusds.jose.jwk.RSAKey;
 import knin.auth.jwt.adapter.TokenTestHelper;
 import knin.auth.jwt.adapter.retriever.Source;
-import knin.auth.jwt.domain.retriever.TableChain;
 import knin.auth.jwt.domain.validate.Token;
 import knin.auth.jwt.domain.validate.TokenJWTInvalidException;
 import knin.auth.jwt.domain.validate.TokenJWTInvalidRuntimeException;
@@ -35,7 +34,7 @@ class IntrospectTest {
         authFactory = new AuthFactory();
         rsaJWK = TokenTestHelper.generateRsaJwk("auth-key-jwks-1");
         otherRsaJWK = TokenTestHelper.generateRsaJwk("untrusted-key-2");
-        source = TokenTestHelper.createSource(authFactory.createTokenHandle(), rsaJWK);
+        source = TokenTestHelper.createSource(rsaJWK);
     }
 
     @Test
@@ -129,7 +128,7 @@ class IntrospectTest {
     @DisplayName("Should successfully introspect token signed with EC (ES256)")
     void shouldIntrospectEcTokenSuccessfullyWithJwks() throws Exception {
         com.nimbusds.jose.jwk.ECKey ecKey = TokenTestHelper.generateEcJwk("auth-key-ec-1");
-        Source ecSource = TokenTestHelper.createSource(authFactory.createTokenHandle(), ecKey);
+        Source ecSource = TokenTestHelper.createSource(ecKey);
         Introspect introspect = authFactory.createIntrospect(authFactory.createSource(ecSource));
 
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);
@@ -149,7 +148,7 @@ class IntrospectTest {
     @DisplayName("Should successfully introspect 4-part (GZIP) token signed with EC (ES256)")
     void shouldIntrospectFourPartsEcTokenSuccessfullyWithJwks() throws Exception {
         com.nimbusds.jose.jwk.ECKey ecKey = TokenTestHelper.generateEcJwk("auth-key-ec-2");
-        Source ecSource = TokenTestHelper.createSource(authFactory.createTokenHandle(), ecKey);
+        Source ecSource = TokenTestHelper.createSource(ecKey);
         Introspect introspect = authFactory.createIntrospect(authFactory.createSource(ecSource));
 
         Date futureExp = new Date(System.currentTimeMillis() + 60_000);

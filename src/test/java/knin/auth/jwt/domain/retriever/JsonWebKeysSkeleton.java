@@ -1,7 +1,5 @@
 package knin.auth.jwt.domain.retriever;
 
-import knin.auth.jwt.domain.retriever.JsonWebKeys;
-
 public class JsonWebKeysSkeleton implements JsonWebKeys {
 
     @Override

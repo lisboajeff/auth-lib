@@ -28,7 +28,7 @@ class SourceChainTest {
     @DisplayName("Should fetch and parse JsonWebKeys from Source when kid is present")
     void shouldFetchAndParseJsonWebKeysWhenKidIsPresent() {
         RSAKey rsaKey = TokenTestHelper.generateRsaJwk("source-kid-1");
-        byte[] jwksBytes = TokenTestHelper.createJsonWebKeys(handle, rsaKey);
+        byte[] jwksBytes = TokenTestHelper.createJsonWebKeys(rsaKey);
 
         Source source = () -> CompletableFuture.completedFuture(jwksBytes);
         SourceChain sourceChain = new SourceChain(source, handle);
@@ -43,7 +43,7 @@ class SourceChainTest {
     @DisplayName("Should return empty optional when kid is not found in the fetched JWKS")
     void shouldReturnEmptyWhenKidNotInFetchedJwks() {
         RSAKey rsaKey = TokenTestHelper.generateRsaJwk("source-kid-1");
-        byte[] jwksBytes = TokenTestHelper.createJsonWebKeys(handle, rsaKey);
+        byte[] jwksBytes = TokenTestHelper.createJsonWebKeys(rsaKey);
 
         Source source = () -> CompletableFuture.completedFuture(jwksBytes);
         SourceChain sourceChain = new SourceChain(source, handle);
@@ -57,7 +57,7 @@ class SourceChainTest {
     @DisplayName("Should deduplicate concurrent in-flight requests for the same kid (Single-Flight)")
     void shouldDeduplicateConcurrentInFlightRequests() throws Exception {
         RSAKey rsaKey = TokenTestHelper.generateRsaJwk("concurrent-kid-1");
-        byte[] jwksBytes = TokenTestHelper.createJsonWebKeys(handle, rsaKey);
+        byte[] jwksBytes = TokenTestHelper.createJsonWebKeys(rsaKey);
 
         AtomicInteger callCount = new AtomicInteger(0);
         CompletableFuture<byte[]> delayedFuture = new CompletableFuture<>();
@@ -110,7 +110,7 @@ class SourceChainTest {
     @DisplayName("Should coordinate 50 concurrent threads and call Source only once")
     void shouldCoordinateFiftyConcurrentThreadsCallingSourceOnlyOnce() throws Exception {
         RSAKey rsaKey = TokenTestHelper.generateRsaJwk("heavy-kid-1");
-        byte[] jwksBytes = TokenTestHelper.createJsonWebKeys(handle, rsaKey);
+        byte[] jwksBytes = TokenTestHelper.createJsonWebKeys(rsaKey);
 
         AtomicInteger callCount = new AtomicInteger(0);
         CompletableFuture<byte[]> delayedFuture = new CompletableFuture<>();

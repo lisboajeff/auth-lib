@@ -25,7 +25,6 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import knin.auth.jwt.adapter.retriever.Source;
-import knin.auth.jwt.domain.validate.TokenHandle;
 
 public final class TokenTestHelper {
 
@@ -57,13 +56,13 @@ public final class TokenTestHelper {
         }
     }
 
-    public static byte[] createJsonWebKeys(final TokenHandle handle, final JWK... keys) {
+    public static byte[] createJsonWebKeys(final JWK... keys) {
         JWKSet jwkSet = new JWKSet(Arrays.stream(keys).map(JWK::toPublicJWK).toList());
         return jwkSet.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    public static Source createSource(final TokenHandle handle, final JWK... keys) {
-        final byte[] jsonWebKeys = createJsonWebKeys(handle, keys);
+    public static Source createSource(final JWK... keys) {
+        final byte[] jsonWebKeys = createJsonWebKeys(keys);
         return () -> CompletableFuture.completedFuture(jsonWebKeys);
     }
 

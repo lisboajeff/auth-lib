@@ -40,7 +40,7 @@ class TokenUtilTest {
         rsaJWK = TokenTestHelper.generateRsaJwk("auth-key-1");
         otherRsaJWK = TokenTestHelper.generateRsaJwk("other-key-2");
         TokenHandle handle = new TokenHandleProxy();
-        byte[] keys = TokenTestHelper.createJsonWebKeys(handle, rsaJWK);
+        byte[] keys = TokenTestHelper.createJsonWebKeys(rsaJWK);
         final Set<String> identifiers = handle.extractIdentifiers(keys);
         jsonWebKeys = new JsonWebKeys() {
             @Override
@@ -60,7 +60,7 @@ class TokenUtilTest {
     void shouldExtractIdentifiersFromValidJwks() {
         RSAKey key1 = TokenTestHelper.generateRsaJwk("kid-1");
         RSAKey key2 = TokenTestHelper.generateRsaJwk("kid-2");
-        byte[] keys = TokenTestHelper.createJsonWebKeys(tokenUtil, key1, key2);
+        byte[] keys = TokenTestHelper.createJsonWebKeys(key1, key2);
 
         Set<String> ids = tokenUtil.extractIdentifiers(keys);
 
@@ -198,7 +198,7 @@ class TokenUtilTest {
     @DisplayName("Should successfully decode 3-part token signed with EC (ES256)")
     void shouldDecodeValidEcTokenSuccessfully() {
         com.nimbusds.jose.jwk.ECKey ecKey = TokenTestHelper.generateEcJwk("ec-auth-key-1");
-        byte[] ecJwksBytes = TokenTestHelper.createJsonWebKeys(tokenUtil, ecKey);
+        byte[] ecJwksBytes = TokenTestHelper.createJsonWebKeys(ecKey);
         Set<String> ecIds = tokenUtil.extractIdentifiers(ecJwksBytes);
         JsonWebKeys ecJwks = new JsonWebKeys() {
             @Override
@@ -226,7 +226,7 @@ class TokenUtilTest {
     @DisplayName("Should successfully decode 4-part (GZIP) token signed with EC (ES256)")
     void shouldDecodeFourPartsEcTokenSuccessfully() throws Exception {
         com.nimbusds.jose.jwk.ECKey ecKey = TokenTestHelper.generateEcJwk("ec-auth-key-2");
-        byte[] ecJwksBytes = TokenTestHelper.createJsonWebKeys(tokenUtil, ecKey);
+        byte[] ecJwksBytes = TokenTestHelper.createJsonWebKeys(ecKey);
         Set<String> ecIds = tokenUtil.extractIdentifiers(ecJwksBytes);
         JsonWebKeys ecJwks = new JsonWebKeys() {
             @Override
@@ -255,7 +255,7 @@ class TokenUtilTest {
     void shouldDecodeBothRsaAndEcFromMixedJwks() {
         RSAKey mixedRsa = TokenTestHelper.generateRsaJwk("mixed-rsa-1");
         com.nimbusds.jose.jwk.ECKey mixedEc = TokenTestHelper.generateEcJwk("mixed-ec-1");
-        byte[] mixedJwksBytes = TokenTestHelper.createJsonWebKeys(tokenUtil, mixedRsa, mixedEc);
+        byte[] mixedJwksBytes = TokenTestHelper.createJsonWebKeys(mixedRsa, mixedEc);
         Set<String> mixedIds = tokenUtil.extractIdentifiers(mixedJwksBytes);
         JsonWebKeys mixedJwks = new JsonWebKeys() {
             @Override

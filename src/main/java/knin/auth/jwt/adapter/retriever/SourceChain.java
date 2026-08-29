@@ -25,7 +25,7 @@ public final class SourceChain extends TableChain<String> {
     protected CompletableFuture<Optional<JsonWebKeys>> fetch(final String kid) {
         final CompletableFuture<Optional<JsonWebKeys>> future = inFlight.computeIfAbsent(kid, k ->
                 source.fetchData()
-                        .<Optional<JsonWebKeys>>thenApply(bytes -> {
+                        .thenApply(bytes -> {
                             if (bytes == null) {
                                 return Optional.empty();
                             }
