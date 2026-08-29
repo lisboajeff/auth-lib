@@ -97,7 +97,7 @@ def main():
     with open(pem_test_path, "wb") as f:
         f.write(private_pem)
 
-    print(f"[+] Active Private Key saved to external secret mount: {pem_secrets_path}")
+    print("[+] Active Private Key saved to external secret mount.")
 
     # Build JWK JSON for new key
     public_numbers = private_key.public_key().public_numbers()
