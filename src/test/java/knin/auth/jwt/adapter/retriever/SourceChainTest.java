@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SourceChainTest {
@@ -69,7 +68,8 @@ class SourceChainTest {
 
         SourceChain sourceChain = new SourceChain(source, handle);
 
-        // Trigger 5 concurrent requests for the same kid while the future is still pending
+        // Trigger 5 concurrent requests for the same kid while the future is still
+        // pending
         CompletableFuture<Optional<JsonWebKeys>> req1 = sourceChain.fetch("concurrent-kid-1");
         CompletableFuture<Optional<JsonWebKeys>> req2 = sourceChain.fetch("concurrent-kid-1");
         CompletableFuture<Optional<JsonWebKeys>> req3 = sourceChain.fetch("concurrent-kid-1");
@@ -100,7 +100,8 @@ class SourceChainTest {
         assertEquals(r1.get().getIds(), r4.get().getIds());
         assertEquals(r1.get().getIds(), r5.get().getIds());
 
-        // Subsequent call after completion (inFlight cleared) should trigger the source again
+        // Subsequent call after completion (inFlight cleared) should trigger the source
+        // again
         sourceChain.fetch("concurrent-kid-1").join();
         assertEquals(2, callCount.get());
     }
