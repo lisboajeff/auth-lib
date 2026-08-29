@@ -1,5 +1,6 @@
 package knin.auth.jwt.domain.validate;
 
+import java.util.Collections;
 import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -32,6 +33,11 @@ public class JWT implements Token {
     @Override
     public boolean hasScope(final String scope) {
         return scopes.contains(scope.toLowerCase(Locale.getDefault()));
+    }
+
+    @Override
+    public Set<String> getScopes() {
+        return Collections.unmodifiableSet(scopes);
     }
 
     @Override

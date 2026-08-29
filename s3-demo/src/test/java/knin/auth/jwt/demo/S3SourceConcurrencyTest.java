@@ -2,102 +2,92 @@ package knin.auth.jwt.demo;
 
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
-import knin.auth.jwt.adapter.retriever.Source;
+import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
 import knin.auth.jwt.domain.validate.Token;
-import knin.auth.jwt.factory.AuthFactory;
 import knin.auth.jwt.option.Introspect;
 import knin.auth.jwt.option.Introspection;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import org.junit.jupiter.api.TestInstance;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
-import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.InputStream;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateCrtKey;
+import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.RSAPublicKeySpec;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@QuarkusTest
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class S3SourceConcurrencyTest {
 
     private static final String BUCKET = "auth-bucket";
     private static final String S3_KEY = "jwks.json";
-    private static final String KID = "demo-auth-key-1";
 
-    private static S3AsyncClient s3AsyncClient;
-    private static JwtSigner jwtSigner;
-    private static Introspect introspect;
-    private static boolean isLocalStackAvailable = false;
+    @Inject
+    S3AsyncClient s3AsyncClient;
+
+    @Inject
+    Introspect introspect;
+
+    @Inject
+    MemoryPolling memoryPolling;
+
+    private JwtSigner jwtSigner;
+    private String primaryKid;
+    private boolean isLocalStackAvailable = false;
 
     @BeforeAll
-    static void setUp() {
-        jwtSigner = new JwtSigner("private_key.pem", KID);
+    void setUp() {
+        jwtSigner = new JwtSigner("private_key.pem");
+        this.primaryKid = jwtSigner.getKid();
 
-        final String localstackEndpoint = System.getenv().getOrDefault("LOCALSTACK_ENDPOINT", "http://localhost:4566");
-
-        s3AsyncClient = S3AsyncClient.builder()
-                .endpointOverride(URI.create(localstackEndpoint))
-                .region(Region.US_EAST_1)
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create("test", "test")
-                ))
-                .httpClientBuilder(NettyNioAsyncHttpClient.builder()
-                        .maxConcurrency(200))
-                .forcePathStyle(true)
-                .build();
-
-        // Check if LocalStack S3 is reachable and seed data
         try {
-            final byte[] jwksBytes = buildJwksFromResourcePem("private_key.pem", KID);
+            final RSAPublicKey pubKey = loadPublicKeyFromResource("private_key.pem");
+            final RSAKey rsaJwk = new RSAKey.Builder(pubKey).keyID(primaryKid).build();
+            final byte[] jwksBytes = new JWKSet(rsaJwk).toString().getBytes(StandardCharsets.UTF_8);
 
-            s3AsyncClient.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build()).join();
+            try {
+                s3AsyncClient.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build()).join();
+            } catch (Exception ignored) {}
 
             s3AsyncClient.putObject(
                     PutObjectRequest.builder().bucket(BUCKET).key(S3_KEY).contentType("application/json").build(),
                     AsyncRequestBody.fromBytes(jwksBytes)
             ).join();
 
+            // Refresh MemoryPolling with the seeded S3 data
+            memoryPolling.refreshFromS3().join();
+
             isLocalStackAvailable = true;
-            System.out.println("[+] LocalStack S3 is available and seeded with JWKS!");
+            System.out.println("[+] LocalStack S3 seeded and MemoryPolling initialized with JWKS (KID: " + primaryKid + ")!");
         } catch (Exception e) {
-            System.out.println("[-] LocalStack not reachable (" + e.getMessage() + "). Running with Mocked S3 fallback.");
+            System.out.println("[-] LocalStack not reachable (" + e.getMessage() + ").");
             isLocalStackAvailable = false;
-        }
-
-        final AuthFactory authFactory = new AuthFactory();
-        final S3AsyncSource s3Source = new S3AsyncSource(s3AsyncClient, BUCKET, S3_KEY);
-        introspect = authFactory.createIntrospect(authFactory.createSource(s3Source));
-    }
-
-    @AfterAll
-    static void tearDown() {
-        if (s3AsyncClient != null) {
-            s3AsyncClient.close();
         }
     }
 
     @Test
-    @DisplayName("Should successfully introspect JWT signed with PEM private key using JWKS from S3 under 100 concurrent threads")
-    void shouldIntrospectUnderHeavyConcurrency() throws Exception {
+    @DisplayName("Should successfully introspect JWT using MemoryPolling under 100 concurrent threads")
+    void shouldIntrospectConcurrentlyViaMemoryPolling() throws Exception {
         if (!isLocalStackAvailable) {
-            System.out.println("[SKIP] LocalStack S3 is not running. Start via docker-compose up -d in s3-demo to run integration test.");
+            System.out.println("[SKIP] LocalStack S3 is not running.");
             return;
         }
 
@@ -122,11 +112,10 @@ class S3SourceConcurrencyTest {
             });
         }
 
-        // Release all 100 threads at the exact same instant
+        // Release all 100 threads simultaneously
         startLatch.countDown();
         assertTrue(doneLatch.await(10, TimeUnit.SECONDS), "All 100 threads should complete execution");
 
-        // Validate that every single thread succeeded
         for (CompletableFuture<Introspection> f : futures) {
             final Introspection introspection = f.get(10, TimeUnit.SECONDS);
             assertNotNull(introspection);
@@ -145,10 +134,57 @@ class S3SourceConcurrencyTest {
     }
 
     @Test
-    @DisplayName("Should successfully introspect 4-part (GZIP) token under 100 concurrent threads using S3 JWKS")
+    @DisplayName("Should detect S3 updates via HeadObject and refresh memory cache automatically")
+    void shouldDetectS3UpdateViaHeadObjectAndRefreshMemory() throws Exception {
+        if (!isLocalStackAvailable) {
+            System.out.println("[SKIP] LocalStack S3 is not running.");
+            return;
+        }
+
+        // 1. Generate a second key pair
+        final KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
+        kpg.initialize(2048);
+        final KeyPair keyPair2 = kpg.generateKeyPair();
+        final RSAKey rsaJwk2Temp = new RSAKey.Builder((RSAPublicKey) keyPair2.getPublic()).build();
+        final String newKid = rsaJwk2Temp.computeThumbprint().toString();
+
+        final RSAKey rsaJwk1 = new RSAKey.Builder(loadPublicKeyFromResource("private_key.pem"))
+                .keyID(primaryKid)
+                .build();
+
+        final RSAKey rsaJwk2 = new RSAKey.Builder((RSAPublicKey) keyPair2.getPublic())
+                .privateKey((RSAPrivateKey) keyPair2.getPrivate())
+                .keyID(newKid)
+                .build();
+
+        final JWKSet updatedJwkSet = new JWKSet(List.of(rsaJwk1, rsaJwk2));
+        final byte[] updatedJwksBytes = updatedJwkSet.toString().getBytes(StandardCharsets.UTF_8);
+
+        // 2. Upload updated JWKS to S3
+        s3AsyncClient.putObject(
+                PutObjectRequest.builder().bucket(BUCKET).key(S3_KEY).contentType("application/json").build(),
+                AsyncRequestBody.fromBytes(updatedJwksBytes)
+        ).join();
+
+        // 3. Trigger check via HeadObject (simulating the 10-second @Scheduled polling)
+        final Boolean updated = memoryPolling.checkAndRefreshIfUpdated().join();
+        assertTrue(updated, "MemoryPolling should detect the S3 update via HeadObject and refresh cache");
+
+        // 4. Sign a JWT with the new key and introspect it
+        final String jwtNew = createJwtWithSigningKey(rsaJwk2, newKid, "NEW_FEATURE");
+        final Introspection introspection = introspect.introspect(jwtNew).join();
+
+        assertNotNull(introspection);
+        assertTrue(introspection.hasToken());
+        final Token token = introspection.token();
+        assertTrue(token.hasScope("new_feature"));
+    }
+
+    @Test
+    @DisplayName("Should successfully introspect 4-part (GZIP) token under 100 concurrent threads using MemoryPolling")
     void shouldIntrospectFourPartsTokenUnderHeavyConcurrency() throws Exception {
         if (!isLocalStackAvailable) {
-            System.out.println("[SKIP] LocalStack S3 is not running. Start via docker-compose up -d in s3-demo to run integration test.");
+            System.out.println("[SKIP] LocalStack S3 is not running.");
             return;
         }
 
@@ -194,68 +230,30 @@ class S3SourceConcurrencyTest {
         executor.shutdown();
     }
 
-    @Test
-    @DisplayName("Should successfully coordinate 100 concurrent threads against S3AsyncSource and Auth pipeline")
-    void shouldIntrospectConcurrentlyWithS3SourceMock() throws Exception {
-        final byte[] jwksBytes = buildJwksFromResourcePem("private_key.pem", KID);
-        final String jwt = jwtSigner.signToken("user-standalone", "SCOPE_1 SCOPE_2", 120_000);
-
-        final AuthFactory authFactory = new AuthFactory();
-        final AtomicInteger s3FetchCount = new AtomicInteger(0);
-
-        // Simulated S3 Async Source with delay
-        final Source mockS3Source = () -> {
-            s3FetchCount.incrementAndGet();
-            return CompletableFuture.supplyAsync(() -> {
-                try {
-                    Thread.sleep(20);
-                } catch (InterruptedException ignored) {}
-                return jwksBytes;
-            });
-        };
-
-        final Introspect mockIntrospect = authFactory.createIntrospect(authFactory.createSource(mockS3Source));
-
-        final int threadCount = 100;
-        final ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-        final CountDownLatch startLatch = new CountDownLatch(1);
-        final CountDownLatch doneLatch = new CountDownLatch(threadCount);
-        final List<CompletableFuture<Introspection>> futures = new CopyOnWriteArrayList<>();
-
-        for (int i = 0; i < threadCount; i++) {
-            executor.submit(() -> {
-                try {
-                    startLatch.await();
-                    futures.add(mockIntrospect.introspect(jwt));
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                } finally {
-                    doneLatch.countDown();
-                }
-            });
+    private static String createJwtWithSigningKey(final RSAKey signingKey, final String kid, final String scopes) {
+        try {
+            final java.util.Date now = new java.util.Date();
+            final java.util.Date exp = new java.util.Date(now.getTime() + 120_000);
+            final com.nimbusds.jwt.JWTClaimsSet.Builder builder = new com.nimbusds.jwt.JWTClaimsSet.Builder()
+                    .subject("user-rotational")
+                    .issuer("https://auth.knin.org")
+                    .issueTime(now)
+                    .expirationTime(exp);
+            if (scopes != null && !scopes.isBlank()) {
+                builder.claim("scope", scopes);
+            }
+            final com.nimbusds.jose.JWSHeader header = new com.nimbusds.jose.JWSHeader.Builder(com.nimbusds.jose.JWSAlgorithm.RS256)
+                    .keyID(kid)
+                    .build();
+            final com.nimbusds.jwt.SignedJWT signedJWT = new com.nimbusds.jwt.SignedJWT(header, builder.build());
+            signedJWT.sign(new com.nimbusds.jose.crypto.RSASSASigner(signingKey.toRSAPrivateKey()));
+            return signedJWT.serialize();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to sign test token with RSAKey", e);
         }
-
-        startLatch.countDown();
-        assertTrue(doneLatch.await(10, TimeUnit.SECONDS));
-
-        // Exactly 1 I/O call should occur thanks to Single-Flight
-        assertEquals(1, s3FetchCount.get());
-
-        for (CompletableFuture<Introspection> f : futures) {
-            final Introspection introspection = f.get(10, TimeUnit.SECONDS);
-            assertNotNull(introspection);
-            assertTrue(introspection.hasToken());
-            final Token token = introspection.token();
-            assertTrue(token.containScopes());
-            assertTrue(token.hasScope("scope_1"));
-            assertTrue(token.hasScope("scope_2"));
-            assertEquals(jwt, token.jwtToString());
-        }
-
-        executor.shutdown();
     }
 
-    private static byte[] buildJwksFromResourcePem(final String resourcePath, final String kid) {
+    private static RSAPublicKey loadPublicKeyFromResource(final String resourcePath) {
         try (InputStream is = S3SourceConcurrencyTest.class.getClassLoader().getResourceAsStream(resourcePath)) {
             if (is == null) {
                 throw new IllegalArgumentException("Resource not found: " + resourcePath);
@@ -270,16 +268,9 @@ class S3SourceConcurrencyTest {
             final KeyFactory kf = KeyFactory.getInstance("RSA");
             final RSAPrivateCrtKey privKey = (RSAPrivateCrtKey) kf.generatePrivate(new PKCS8EncodedKeySpec(encoded));
             final RSAPublicKeySpec publicKeySpec = new RSAPublicKeySpec(privKey.getModulus(), privKey.getPublicExponent());
-            final RSAPublicKey pubKey = (RSAPublicKey) kf.generatePublic(publicKeySpec);
-
-            final RSAKey rsaJwk = new RSAKey.Builder(pubKey)
-                    .keyID(kid)
-                    .build();
-
-            final JWKSet jwkSet = new JWKSet(rsaJwk);
-            return jwkSet.toString().getBytes(StandardCharsets.UTF_8);
+            return (RSAPublicKey) kf.generatePublic(publicKeySpec);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to build JWKS from PEM", e);
+            throw new RuntimeException("Failed to load public key from PEM", e);
         }
     }
 

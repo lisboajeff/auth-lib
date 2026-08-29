@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,15 +30,17 @@ class JWTTest {
         assertFalse(token.containScopes());
         assertFalse(token.hasScope("123"));
         assertEquals("jwt", token.jwtToString());
+        assertEquals(Set.of(), token.getScopes());
     }
 
     @Test
     @DisplayName("Should find and sanitize scopes in JWT token successfully")
     void shouldFindScopesInToken() {
+        final Set<String> expectedScopes = Set.of("123", "456", "789", "  with_space", "with-hyphen ");
         final Token token = JWT.from(new TokenData() {
             @Override
             public Set<String> getCollectionByKey(final String key) {
-                return Set.of("123", "456", "789", "  with_space", "with-hyphen ");
+                return expectedScopes;
             }
 
             @Override
@@ -53,5 +56,6 @@ class JWTTest {
         assertTrue(token.hasScope("with_space"));
         assertTrue(token.hasScope("with-hyphen"));
         assertEquals("jwt.2", token.jwtToString());
+        assertEquals(expectedScopes.stream().map(String::trim).collect(Collectors.toSet()), token.getScopes());
     }
 }

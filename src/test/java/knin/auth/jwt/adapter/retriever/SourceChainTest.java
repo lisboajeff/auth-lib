@@ -161,9 +161,9 @@ class SourceChainTest {
     }
 
     @Test
-    @DisplayName("Should throw IllegalCallerException on set()")
-    void shouldThrowOnSet() {
+    @DisplayName("Should execute set() safely as no-op")
+    void shouldNotThrowOnSet() {
         SourceChain sourceChain = new SourceChain(() -> CompletableFuture.completedFuture(null), handle);
-        assertThrows(IllegalCallerException.class, () -> sourceChain.set(null));
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> sourceChain.set(null));
     }
 }

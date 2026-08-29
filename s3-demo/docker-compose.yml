@@ -9,3 +9,36 @@ services:
     environment:
       - SERVICES=s3
       - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - ./scripts/init-s3.sh:/etc/localstack/init/ready.d/init-s3.sh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  auth-service:
+    build:
+      context: ..
+      dockerfile: s3-demo/Dockerfile
+    container_name: auth-service-demo
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTH_S3_ENDPOINT=http://localstack:4566
+      - AUTH_S3_REGION=us-east-1
+      - AUTH_S3_BUCKET=auth-bucket
+      - AUTH_S3_KEY=jwks.json
+      - AUTH_REQUIRED_SCOPE=read
+      - AUTH_PRIVATE_KEY_PATH=/etc/auth/private_key.pem
+    volumes:
+      - ./secrets/private_key.pem:/etc/auth/private_key.pem:ro
+      - maven-cache:/root/.m2
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+volumes:
+  maven-cache:
+    name: auth_lib_maven_cache
