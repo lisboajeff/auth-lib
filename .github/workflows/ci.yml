@@ -1,0 +1,52 @@
+name: CI - Build & Test
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Java 21 - Build and Test
+    runs-on: ubuntu-latest
+
+    services:
+      localstack:
+        image: localstack/localstack:latest
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: s3
+          AWS_DEFAULT_REGION: us-east-1
+        options: >-
+          --health-cmd "curl -s http://localhost:4566/_localstack/health | grep '\"s3\": \"available\"' || exit 0"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build & Run auth-lib Unit Tests
+        run: mvn clean test
+
+      - name: Install auth-lib to Local Maven Repo
+        run: mvn install -DskipTests
+
+      - name: Run s3-demo Integration & Concurrency Tests
+        run: mvn clean test -f s3-demo/pom.xml
+        env:
+          AUTH_S3_ENDPOINT: http://localhost:4566
+          AUTH_S3_REGION: us-east-1
+          AUTH_S3_ACCESS_KEY: test
+          AUTH_S3_SECRET_KEY: test
