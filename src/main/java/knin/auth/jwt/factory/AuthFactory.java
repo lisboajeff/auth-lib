@@ -31,15 +31,6 @@ public final class AuthFactory {
         return new SourceChain(source, tokenHandle);
     }
 
-    public TableChain<String> createSource(final TokenHandle tokenHandle, final Source source,
-            final TableChain<? super String> next) {
-        return new SourceChain(source, tokenHandle, next);
-    }
-
-    public TableChain<String> createSource(final Source source, final TableChain<? super String> next) {
-        return createSource(createTokenHandle(), source, next);
-    }
-
     public TableChain<String> createSource(final Source source) {
         return createSource(createTokenHandle(), source);
     }
